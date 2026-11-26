@@ -808,12 +808,12 @@ function drawOverlays(ctx,q,t){
   for(const o of list){const a=ovFrameAsset(o,t);if(!a||!assets[a])continue;ctx.setTransform(q,0,0,q,0,0);drawFrame(ctx,{a,dur:1,ox:o.x,oy:o.y,s:o.s,flip:o.flip,op:o.op},q,null,1)}
 }
 function addOverlay(id,track,start){
-  mut(()=>{const o={id:uid(),a:id,track:Math.max(2,track),start:+Math.max(0,start).toFixed(2),dur:3,x:0,y:0,s:50,op:100,flip:false};P.overlays.push(o);P.ovTracks=Math.max(P.ovTracks||1,o.track-1);U.ov=o.id;U.clip=null});
+  mut(()=>{const tk2=Math.max(2,track),o={id:uid(),a:id,track:tk2,start:freeStart(tk2,Math.max(0,start),3),dur:3,x:0,y:0,s:50,op:100,flip:false};P.overlays.push(o);P.ovTracks=Math.max(P.ovTracks||1,o.track-1);U.ov=o.id;U.clip=null});
   toast('Imagem sobreposta no vídeo. Ajuste posição e escala abaixo da timeline.');
 }
 function addOverlaySeq(sid,track,start){
   const q=findSeq(sid);if(!q||!q.frames.length)return;
-  mut(()=>{const fps=q.fps||12,o={id:uid(),seq:sid,a:q.frames[0],track:Math.max(2,track),start:+Math.max(0,start).toFixed(2),dur:+Math.max(.5,q.frames.length/fps).toFixed(2),x:0,y:0,s:100,op:100,flip:false,fps,off:0};P.overlays.push(o);P.ovTracks=Math.max(P.ovTracks||1,o.track-1);U.ov=o.id;U.clip=null});
+  mut(()=>{const fps=q.fps||12,o={id:uid(),seq:sid,a:q.frames[0],track:Math.max(2,track),start:freeStart(Math.max(2,track),Math.max(0,start),Math.max(3,q.frames.length/fps)),dur:+Math.max(3,q.frames.length/fps).toFixed(2),x:0,y:0,s:100,op:100,flip:false,fps,off:0};P.overlays.push(o);P.ovTracks=Math.max(P.ovTracks||1,o.track-1);U.ov=o.id;U.clip=null});
   toast('Animação “'+q.name+'” colocada na timeline. Arraste a borda direita para repetir por mais tempo.');
 }
 function insertSeqScene(q,tt){
@@ -821,6 +821,19 @@ function insertSeqScene(q,tt){
   mut(()=>{const ns={...newScene(q.name,near?near.act:'meio',q.fps||12),target:Math.max(24,q.frames.length),frames:q.frames.map(newFrame)};
     const at=ref?P.scenes.indexOf(ref.scene):(near?P.scenes.indexOf(near)+1:P.scenes.length);P.scenes.splice(at,0,ns);U.sceneId=ns.id;U.sel=0});
   toast('“'+q.name+'” entrou como uma nova cena, na posição em que você soltou.');
+}
+/* primeiro ponto livre da faixa a partir de "start": um clipe novo nunca cai por cima (e esconde) outro */
+function freeStart(track,start,dur,ign){
+  let s=start,moved=true,guard=0;
+  while(moved&&guard++<80){moved=false;for(const o of P.overlays){if(o.track!==track||o.id===ign)continue;if(s<o.start+o.dur-1e-6&&s+dur>o.start+1e-6){s=o.start+o.dur;moved=true}}}
+  return +s.toFixed(2);
+}
+/* imagem solta na faixa Vídeo 1: vira uma cena que segura a imagem por alguns segundos (um clipe visível, como no Filmora) */
+function insertImageScene(id,tt,secs=3){
+  const a=assets[id],segs=projectSegs(),ref=segs.find(g=>g.start+g.dur/2>tt),near=ref?ref.scene:(segs.length?segs[segs.length-1].scene:null);
+  mut(()=>{const ns={...newScene((a.name||'Imagem').replace(/\.[^.]+$/,''),near?near.act:'meio',P.fps||12),len:secs,frames:[newFrame(id)]};
+    const at=ref?P.scenes.indexOf(ref.scene):(near?P.scenes.indexOf(near)+1:P.scenes.length);P.scenes.splice(at,0,ns);U.sceneId=ns.id;U.sel=0});
+  toast('Imagem colocada no vídeo por '+secs+' s. Arraste a borda direita do clipe para mudar o tempo.');
 }
 function addAudioClip(id,start){
   mut(()=>{const a=assets[id],k={id:uid(),a:id,start:+Math.max(0,start).toFixed(2),in:0,out:a.dur,vol:1,fi:0,fo:0,mute:false};P.audio.push(k);U.clip=k.id;U.ov=null});
@@ -880,7 +893,7 @@ function mediaBoxHTML(){
     return `<div class="mitem ${S.has(id)?'sel':''}" draggable="true" data-act="mediaSel" data-id="${id}" data-drag="media" data-dv="${id}" title="${esc(a.name)}"><div class="mth ${au?'':'bg-checker'}">${th}</div><span class="mn">${esc(a.name)}</span><div class="mact">${acts2}<button class="mi" data-act="mediaRemove" data-id="${id}" title="Remover da biblioteca">✕</button></div></div>`}).join('');
   const n=seqs.length+ids.length,all=n&&S.size===n;
   return `<div class="mbar"><button class="btn sm pri" data-act="mediaImport">＋ Importar mídia</button><button class="btn sm" id="msAll" data-act="mediaSelAll" ${n?'':'disabled'}>${all?'Limpar seleção':'Selecionar tudo'}</button><span class="mut" id="msTxt" style="font-size:12px">${S.size?S.size+' selecionado(s). Arraste um deles para levar todos.':''}</span></div>
-   <div class="mgrid">${seqItems+items||'<div class="empty">Biblioteca vazia. Clique em “Importar mídia” ou arraste arquivos para cá. Um .zip (ou várias imagens) é aberto, colocado em ordem e já entra no projeto como uma cena.</div>'}</div>
+   <div class="mgrid">${seqItems+items||'<div class="empty">Biblioteca vazia. Clique em “Importar mídia” ou arraste arquivos para cá. Um .zip (ou várias imagens) é aberto e colocado em ordem aqui; só vai para a timeline quando você arrastar.</div>'}</div>
    <div class="mut mhint" style="font-size:11.5px;padding:8px 2px 0">Clique para selecionar (Ctrl para vários) e arraste para a timeline. Os itens continuam aqui na biblioteca.</div>`;
 }
 /* cria (ou preenche a cena vazia atual com) uma cena a partir de uma lista de imagens, já em ordem */
@@ -903,8 +916,10 @@ function dropMediaMulti(t,tt,tk){
       const segs=projectSegs(),ref=segs.find(g=>g.start+g.dur/2>tt),near=ref?ref.scene:(segs.length?segs[segs.length-1].scene:null);
       let at=ref?P.scenes.indexOf(ref.scene):(near?P.scenes.indexOf(near)+1:P.scenes.length);
       const mk=(name,fr,fps)=>({...newScene(name,near?near.act:'meio',fps),target:Math.max(24,fr.length),frames:fr.map(newFrame)}),imgs=ids.filter(x=>!x.startsWith('seq:')&&!isAud(x));
-      for(const id of ids)if(id.startsWith('seq:')){const q=findSeq(id.slice(4));if(q)P.scenes.splice(at++,0,mk(q.name,q.frames,q.fps||12))}
-      if(imgs.length)P.scenes.splice(at++,0,mk('Imagens',imgs,P.fps||12));
+      for(const id of ids){
+        if(id.startsWith('seq:')){const q=findSeq(id.slice(4));if(q)P.scenes.splice(at++,0,mk(q.name,q.frames,q.fps||12))}
+        else if(!isAud(id)&&assets[id]){const ns=mk((assets[id].name||'Imagem').replace(/\.[^.]+$/,''),[id],P.fps||12);ns.len=3;P.scenes.splice(at++,0,ns)}
+      }
     });
     toast('Itens adicionados ao vídeo como cenas, na ordem da biblioteca.');return;
   }
@@ -913,8 +928,8 @@ function dropMediaMulti(t,tt,tk){
     let st=tt;
     for(const id of ids){
       if(isAud(id)){P.audio.push(audClip(id,st));st+=assets[id].dur;continue}
-      if(id.startsWith('seq:')){const q=findSeq(id.slice(4));if(!q)continue;const fps=q.fps||12,d=+Math.max(.5,q.frames.length/fps).toFixed(2);P.overlays.push({id:uid(),seq:q.id,a:q.frames[0],track:tr,start:+st.toFixed(2),dur:d,x:0,y:0,s:100,op:100,flip:false,fps,off:0});st+=d}
-      else{P.overlays.push({id:uid(),a:id,track:tr,start:+st.toFixed(2),dur:2,x:0,y:0,s:50,op:100,flip:false});st+=2}
+      if(id.startsWith('seq:')){const q=findSeq(id.slice(4));if(!q)continue;const fps=q.fps||12,d=+Math.max(3,q.frames.length/fps).toFixed(2),s0=freeStart(tr,st,d);P.overlays.push({id:uid(),seq:q.id,a:q.frames[0],track:tr,start:s0,dur:d,x:0,y:0,s:100,op:100,flip:false,fps,off:0});st=s0+d}
+      else{const s0=freeStart(tr,st,3);P.overlays.push({id:uid(),a:id,track:tr,start:s0,dur:3,x:0,y:0,s:50,op:100,flip:false});st=s0+3}
     }
     P.ovTracks=Math.max(P.ovTracks||1,tr-1);
   });
@@ -951,9 +966,9 @@ async function mediaImportFiles(files){
   if(loose.length>1)seqs.push({ids:loose.map(x=>x.id),name:seqName(loose[0].name),fps:null});
   else if(loose.length===1){singles.push(loose[0].id);if(!seqs.length&&await looksLikeSheet(assets[loose[0].id]))sheet=loose[0].id}
   if(!seqs.length&&!singles.length){toast('Nenhum arquivo compatível (PNG, WebP, JPG, .zip, mp3, wav…).');return}
-  /* o zip é descompactado, ordenado (numérico/alfabético) e já entra no projeto como cena */
-  mut(()=>{seqs.forEach(s=>{regSeq(s.ids,s.name,s.fps||P.fps);sceneFromIds(s.name,s.ids,s.fps||P.fps)});regMedia(singles)});
-  toast(seqs.length?seqs.length+' sequência(s) abertas em ordem e adicionadas ao projeto'+(singles.length?' · +'+singles.length+' arquivo(s)':'')+'.':singles.length+' arquivo(s) na biblioteca de mídia.');
+  /* o zip é descompactado e ordenado (numérico/alfabético) na biblioteca; só vai para a timeline quando você arrastar */
+  mut(()=>{seqs.forEach(s=>regSeq(s.ids,s.name,s.fps||P.fps));regMedia(singles)});
+  toast(seqs.length?seqs.length+' sequência(s) abertas em ordem na biblioteca'+(singles.length?' · +'+singles.length+' arquivo(s)':'')+'. Arraste para a timeline quando quiser usar.':singles.length+' arquivo(s) na biblioteca de mídia.');
   if(sheet)openSlicer(sheet,{fromImport:true});
 }
 function mediaDur(id){if(id==='multi')return [...U.msel].reduce((s,x)=>s+mediaDur(x),0)||2;if(id.startsWith('seq:')){const q=findSeq(id.slice(4));return q?Math.max(.5,q.frames.length/(q.fps||12)):2}const a=assets[id];return a&&a.kind==='audio'?a.dur:3}
@@ -974,8 +989,7 @@ function dropMedia(id,t,e){
   const a=assets[id];if(!a)return;
   if(a.kind==='audio'){addAudioClip(id,tt);return}
   if(tk==='audio'){toast('Imagens não vão na faixa de áudio. Solte em Vídeo 2 (ou acima) para sobrepor.');return}
-  if(tk==='main'){const segs=projectSegs(),g=segs.find(x=>tt>=x.start&&tt<x.start+x.dur)||segs[segs.length-1],s=g?g.scene:curScene();
-    mut(()=>{s.frames.push(newFrame(id));U.sceneId=s.id;U.sel=s.frames.length-1});toast('Imagem adicionada ao fim da cena “'+s.name+'”.');return}
+  if(tk==='main'){insertImageScene(id,tt);return}
   addOverlay(id,+tk||2,tt);
 }
 /* silhueta do clipe enquanto arrasta, como no Filmora */
@@ -1731,7 +1745,7 @@ Object.assign(acts,{
     ovop:v=>{ovl().op=+v;const l=$('#ovopl');if(l)l.textContent=v+'%';autosave();rep()}
   });
 }
-(async()=>{await restore();fixSel();render();setStatus('Pronto');if(!usedIds().length)toast('Bem-vindo! Abra uma cena em “Projeto” e importe suas imagens.')})();
+(async()=>{await restore();fixSel();render();setStatus('Pronto');if(!usedIds().length)toast('Bem-vindo! Importe seus arquivos na aba Mídia e arraste para a timeline.')})();
 </script>
 </body>
 </html>
