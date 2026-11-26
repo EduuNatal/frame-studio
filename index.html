@@ -1120,30 +1120,33 @@ function orderBoxes(b){
   rows.sort((p,q)=>p.y0-q.y0);return rows.flatMap(r=>r.items.sort((p,q)=>p.x+p.w/2-(q.x+q.w/2)));
 }
 /* componentes conexos do primeiro plano (depois de engrossar o desenho por "gap/2" px): funciona mesmo quando fitas ou punhos de um quadro invadem a coluna do vizinho */
-function segment(mask,w,h,gap,_g2,minArea){
-  const r=Math.max(0,Math.round(gap/2)),dm=dilate(mask,w,h,r),n=w*h,lab=new Uint8Array(n),st=new Int32Array(n);let comps=[];
+function segment(mask,w,h,gap,_g2,minArea,out){
+  const r=Math.max(0,Math.round(gap/2)),dm=dilate(mask,w,h,r),n=w*h,lab=new Uint16Array(n),st=new Int32Array(n);let comps=[],next=0;
   for(let s=0;s<n;s++){
     if(!dm[s]||lab[s])continue;
-    let sp=0,area=0,x0=w,y0=h,x1=-1,y1=-1;st[sp++]=s;lab[s]=1;
+    const id=next<65534?++next:65535;
+    let sp=0,area=0,x0=w,y0=h,x1=-1,y1=-1;st[sp++]=s;lab[s]=id;
     while(sp>0){
       const i=st[--sp],x=i%w,y=(i-x)/w;
       if(mask[i]){area++;if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}
-      if(x>0&&dm[i-1]&&!lab[i-1]){lab[i-1]=1;st[sp++]=i-1}
-      if(x<w-1&&dm[i+1]&&!lab[i+1]){lab[i+1]=1;st[sp++]=i+1}
-      if(y>0&&dm[i-w]&&!lab[i-w]){lab[i-w]=1;st[sp++]=i-w}
-      if(y<h-1&&dm[i+w]&&!lab[i+w]){lab[i+w]=1;st[sp++]=i+w}
+      if(x>0&&dm[i-1]&&!lab[i-1]){lab[i-1]=id;st[sp++]=i-1}
+      if(x<w-1&&dm[i+1]&&!lab[i+1]){lab[i+1]=id;st[sp++]=i+1}
+      if(y>0&&dm[i-w]&&!lab[i-w]){lab[i-w]=id;st[sp++]=i-w}
+      if(y<h-1&&dm[i+w]&&!lab[i+w]){lab[i+w]=id;st[sp++]=i+w}
     }
-    if(area>0&&area>=minArea)comps.push({x:x0,y:y0,w:x1-x0+1,h:y1-y0+1,area,on:true});
+    if(area>0&&area>=minArea)comps.push({x:x0,y:y0,w:x1-x0+1,h:y1-y0+1,area,on:true,ids:[id]});
   }
   if(comps.length>2){
     const as=comps.map(c=>c.area).sort((p,q)=>p-q),med=as[as.length>>1],big=comps.filter(c=>c.area>=med*.12),frag=comps.filter(c=>c.area<med*.12);
     if(big.length&&frag.length){
       for(const f of frag){let bj=null,bd=1e9;for(const o of big){const dx=Math.max(0,Math.max(o.x-(f.x+f.w),f.x-(o.x+o.w))),dy=Math.max(0,Math.max(o.y-(f.y+f.h),f.y-(o.y+o.h))),d=Math.hypot(dx,dy);if(d<bd){bd=d;bj=o}}
-        if(bj&&bd<=Math.max(24,r*3)){const x0=Math.min(bj.x,f.x),y0=Math.min(bj.y,f.y),x1=Math.max(bj.x+bj.w,f.x+f.w),y1=Math.max(bj.y+bj.h,f.y+f.h);bj.x=x0;bj.y=y0;bj.w=x1-x0;bj.h=y1-y0;bj.area+=f.area}}
+        if(bj&&bd<=Math.max(24,r*3)){const x0=Math.min(bj.x,f.x),y0=Math.min(bj.y,f.y),x1=Math.max(bj.x+bj.w,f.x+f.w),y1=Math.max(bj.y+bj.h,f.y+f.h);bj.x=x0;bj.y=y0;bj.w=x1-x0;bj.h=y1-y0;bj.area+=f.area;bj.ids.push(...f.ids)}}
       comps=big;
     }
   }
-  return orderBoxes(comps);
+  const boxes=orderBoxes(comps);
+  if(out){const owner=new Uint16Array(65536);boxes.forEach((b,i)=>{b.k=i+1;b.ids.forEach(id=>{owner[id]=i+1})});out.lab=lab;out.owner=owner}
+  return boxes;
 }function autoGap(mask,w,h,minArea){
   const cands=[2,4,6,8,12,16,24,32,48,64].map(g=>Math.max(1,Math.round(g*w/1920))),res=cands.map(g=>({g,n:segment(mask,w,h,g,g,minArea).length}));
   let bi=-1,bl=0;for(let i=0;i<res.length;){let j=i;while(j+1<res.length&&res[j+1].n===res[i].n)j++;const len=j-i+1;if(res[i].n>=2&&len>bl){bl=len;bi=i}i=j+1}
@@ -1226,11 +1229,18 @@ async function sliceApply(){
   }
   const full=document.createElement('canvas');full.width=W;full.height=H;full.getContext('2d').putImageData(F.d,0,0);
   /* retângulo e centro de massa exatos de cada quadro, na resolução original */
+  /* so os pixels que pertencem a cada personagem entram no frame (pedacos de vizinhos que invadem o retangulo ficam de fora) */
+  let L=null,fb=null;
+  if(S.mode==='auto'){const o={};fb=segment(FR,W,H,S.gap/A.s,0,Math.max(40,Math.round(W*H*.0003)),o);L=o}
+  const iou=(p,q)=>{const x0=Math.max(p.x,q.x),y0=Math.max(p.y,q.y),x1=Math.min(p.x+p.w,q.x+q.w),y1=Math.min(p.y+p.h,q.y+q.h),i=Math.max(0,x1-x0)*Math.max(0,y1-y0);return i/(p.w*p.h+q.w*q.h-i)};
   const sp=boxes.map(b=>{
-    const rx0=Math.max(0,Math.floor(b.x*k)-3),ry0=Math.max(0,Math.floor(b.y*k)-3),rx1=Math.min(W-1,Math.ceil((b.x+b.w)*k)+3),ry1=Math.min(H-1,Math.ceil((b.y+b.h)*k)+3);
+    const bs={x:b.x*k,y:b.y*k,w:b.w*k,h:b.h*k};let match=null,bi=.3;
+    if(fb)for(const f of fb){const v=iou(bs,f);if(v>bi){bi=v;match=f}}
+    const own=match?(i=>L.owner[L.lab[i]]===match.k):(()=>true);
+    const rx0=Math.max(0,Math.floor(bs.x)-3),ry0=Math.max(0,Math.floor(bs.y)-3),rx1=Math.min(W-1,Math.ceil(bs.x+bs.w)+3),ry1=Math.min(H-1,Math.ceil(bs.y+bs.h)+3);
     let xa=rx1,xb=rx0,ya=ry1,yb=ry0,n=0,sx=0;
-    for(let y=ry0;y<=ry1;y++)for(let x=rx0;x<=rx1;x++)if(FR[y*W+x]){n++;sx+=x;if(x<xa)xa=x;if(x>xb)xb=x;if(y<ya)ya=y;if(y>yb)yb=y}
-    return {x:xa,y:ya,w:xb-xa+1,h:yb-ya+1,cx:n?sx/n:(xa+xb)/2};
+    for(let y=ry0;y<=ry1;y++)for(let x=rx0;x<=rx1;x++){const i=y*W+x;if(FR[i]&&own(i)){n++;sx+=x;if(x<xa)xa=x;if(x>xb)xb=x;if(y<ya)ya=y;if(y>yb)yb=y}}
+    return {x:xa,y:ya,w:Math.max(1,xb-xa+1),h:Math.max(1,yb-ya+1),cx:n?sx/n:(xa+xb)/2,own};
   });
   const pad=Math.max(0,S.pad|0);let cw,ch;
   if(S.align==='feet'){const half=Math.ceil(Math.max(...sp.map(s=>Math.max(s.cx-s.x+1,s.x+s.w-s.cx))))+pad;cw=half*2;ch=Math.max(...sp.map(s=>s.h))+pad*2}
@@ -1239,12 +1249,20 @@ async function sliceApply(){
   for(let i=0;i<sp.length;i++){
     const s=sp[i],c=document.createElement('canvas');c.width=cw;c.height=ch;const x=c.getContext('2d');x.imageSmoothingEnabled=false;
     if(!S.alphaMode&&!S.remove){x.fillStyle='rgb('+S.bg.join(',')+')';x.fillRect(0,0,cw,ch)}
+    const crop=new ImageData(s.w,s.h),cd=crop.data;
+    for(let yy=0;yy<s.h;yy++)for(let xx=0;xx<s.w;xx++){
+      const gi=(s.y+yy)*W+(s.x+xx),j=gi*4,o=(yy*s.w+xx)*4;
+      if(FR[gi]&&s.own(gi)){cd[o]=px[j];cd[o+1]=px[j+1];cd[o+2]=px[j+2];cd[o+3]=px[j+3]}
+      else if(S.remove||S.alphaMode){cd[o+3]=0}
+      else if(FR[gi]){cd[o]=S.bg[0];cd[o+1]=S.bg[1];cd[o+2]=S.bg[2];cd[o+3]=255}
+      else{cd[o]=px[j];cd[o+1]=px[j+1];cd[o+2]=px[j+2];cd[o+3]=px[j+3]}
+    }
+    const tc=document.createElement('canvas');tc.width=s.w;tc.height=s.h;tc.getContext('2d').putImageData(crop,0,0);
     let dx,dy;if(S.align==='feet'){dx=Math.round(cw/2-(s.cx-s.x));dy=ch-pad-s.h}else{dx=Math.round((cw-s.w)/2);dy=Math.round((ch-s.h)/2)}
-    x.drawImage(full,s.x,s.y,s.w,s.h,dx,dy,s.w,s.h);
+    x.drawImage(tc,dx,dy);
     const blob=await new Promise(r=>c.toBlob(r,'image/png'));files.push(new File([blob],base+'_'+String(i+1).padStart(2,'0')+'.png',{type:'image/png'}));
     if(i%3===2)await new Promise(r=>setTimeout(r,0));
-  }
-  const ids=[];for(const f of files)ids.push(await ingest(f));
+  }  const ids=[];for(const f of files)ids.push(await ingest(f));
   const sc=curScene();closeModal();
   mut(()=>{regMedia(ids);const at=S.at==null?sc.frames.length:S.at;sc.frames.splice(at,0,...ids.map(newFrame));U.sel=at});
   toast(ids.length+' frames criados ('+cw+'×'+ch+' px cada) e adicionados à cena “'+sc.name+'”.');
