@@ -258,6 +258,8 @@ body.dragging-tl,body.dragging-tl *{user-select:none!important;-webkit-user-sele
 .mi{background:#000d;border:1px solid var(--line);border-radius:6px;color:#fff;cursor:pointer;padding:1px 6px;font-size:12px}
 .mi:hover{border-color:var(--ac)}
 .mediacard{padding:10px}
+.slprev{border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:46vh;background:#0b0a10;text-align:center}
+.slprev canvas{max-width:100%;height:auto;display:block;margin:0 auto}
 .oclip{position:absolute;border:1px solid #6d4be0;border-radius:6px;overflow:hidden;cursor:grab;touch-action:none;background:#1b1530 repeat-x left center/auto 100%}
 .oclip.sel{border-color:#fff;box-shadow:0 0 0 1px var(--ac)}
 .oclip .cn{position:absolute;left:10px;top:2px;font-size:10.5px;background:#000b;border-radius:4px;padding:0 5px;pointer-events:none;max-width:85%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
@@ -391,15 +393,18 @@ async function unzip(file){
   return out;
 }
 async function importFiles(files,at=null){
-  let notes=null;const exp=[];
-  for(const f of files){if(/\.zip$/i.test(f.name)){try{for(const x of await unzip(f)){if(/\.txt$|\.md$/i.test(x.name))notes=await x.text();else exp.push(x)}}catch(e){toast('Zip inválido: '+e.message)}}else exp.push(f)}
+  let notes=null,zipSeen=false;const exp=[];
+  for(const f of files){if(/\.zip$/i.test(f.name)){zipSeen=true;try{for(const x of await unzip(f)){if(/\.txt$|\.md$/i.test(x.name))notes=await x.text();else exp.push(x)}}catch(e){toast('Zip inválido: '+e.message)}}else exp.push(f)}
   files=exp;
   files=files.filter(f=>/^image\/(png|webp|jpeg)$/.test(f.type)||/\.(png|webp|jpe?g)$/i.test(f.name));
   if(!files.length){toast('Nenhuma imagem PNG, WebP ou JPG encontrada.');return}
   files.sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:'base'}));
   toast('Importando '+files.length+' imagem(ns)…');const ids=[];
   for(const f of files){try{ids.push(await ingest(f))}catch(e){toast('Falha ao ler '+f.name)}}
-  if(!ids.length)return;const s=curScene();
+  if(!ids.length)return;
+  /* uma única imagem que parece uma folha de sprites: oferece dividir em frames */
+  if(ids.length===1&&!zipSeen&&await looksLikeSheet(assets[ids[0]])){toast('Esta imagem parece uma folha de sprites.');openSlicer(ids[0],{fromImport:true,at});return}
+  const s=curScene();
   let extra='';
   mut(()=>{const pos=at==null?s.frames.length:at;s.frames.splice(pos,0,...ids.map(newFrame));regMedia(ids);U.sel=pos;
     if(notes){const m=notes.match(/FPS sugerido:\s*(\d+)/i);if(m){s.fps=Math.max(1,Math.min(60,+m[1]));extra+=' FPS da cena ajustado para '+s.fps+' (nota do zip).'}if(/nearest/i.test(notes)){P.pixel=true;extra+=' Pixel art ativado.'}}});
@@ -796,14 +801,14 @@ function ovInspHTML(o){
    <div class="mut" style="font-size:12px;margin-top:4px">Arraste o clipe para mover (também entre faixas) · bordas roxas mudam o tempo de início e fim · mova a agulha e use ✂ para dividir. A imagem aparece sobre o vídeo das faixas abaixo.</div>`;
 }
 function sbarHTML(){
-  return `<div class="sbar"><button class="btn" data-act="importHere">+ Importar imagens</button><button class="btn" data-act="replaceFrame">Trocar imagem</button><button class="btn" data-act="dupFrame">Duplicar</button><button class="btn" data-act="flipFrame">Espelhar</button><button class="btn bad" data-act="delFrame">Excluir</button><button class="btn" data-act="fitOpen" title="Iguala o tamanho do personagem entre imagens de tamanhos diferentes">⚖ Ajustar proporção</button></div>`;
+  return `<div class="sbar"><button class="btn" data-act="importHere">+ Importar imagens</button><button class="btn" data-act="replaceFrame">Trocar imagem</button><button class="btn" data-act="dupFrame">Duplicar</button><button class="btn" data-act="flipFrame">Espelhar</button><button class="btn bad" data-act="delFrame">Excluir</button><button class="btn" data-act="fitOpen" title="Iguala o tamanho do personagem entre imagens de tamanhos diferentes">⚖ Ajustar proporção</button><button class="btn" data-act="sliceFile" title="Separa uma imagem com vários personagens em frames">✂ Dividir folha de sprites</button></div>`;
 }
 function mediaBoxHTML(){
   const ids=(P.media||[]).filter(id=>assets[id]);
   const items=ids.map(id=>{const a=assets[id],au=a.kind==='audio';
     const th=au?`<span class="ic-au">♪</span><em>${a.dur.toFixed(1)}s</em>`:`<img src="${thumbOf(a)}" draggable="false" alt="">`;
     const acts2=au?`<button class="mi" data-act="mediaAdd" data-id="${id}" data-m="audio" title="Adicionar o áudio na posição da agulha">＋</button>`
-      :`<button class="mi" data-act="mediaAdd" data-id="${id}" data-m="scene" title="Adicionar à cena atual (como frame)">🎞</button><button class="mi" data-act="mediaAdd" data-id="${id}" data-m="overlay" title="Sobrepor no vídeo, na posição da agulha">◫</button>`;
+      :`<button class="mi" data-act="mediaAdd" data-id="${id}" data-m="scene" title="Adicionar à cena atual (como frame)">🎞</button><button class="mi" data-act="mediaAdd" data-id="${id}" data-m="overlay" title="Sobrepor no vídeo, na posição da agulha">◫</button><button class="mi" data-act="mediaSlice" data-id="${id}" title="Dividir folha de sprites em frames">✂</button>`;
     return `<div class="mitem" draggable="true" data-drag="media" data-dv="${id}" title="${esc(a.name)}"><div class="mth ${au?'':'bg-checker'}">${th}</div><span class="mn">${esc(a.name)}</span><div class="mact">${acts2}<button class="mi" data-act="mediaRemove" data-id="${id}" title="Remover da biblioteca">✕</button></div></div>`}).join('');
   return `<div class="mbar"><button class="btn sm pri" data-act="mediaImport">＋ Importar mídia</button><span class="mut" style="font-size:12px">${ids.length} arquivo(s) · imagens, .zip e áudio</span></div>
    <div class="mgrid">${items||'<div class="empty">Biblioteca vazia. Clique em “Importar mídia” ou arraste arquivos para cá.</div>'}</div>
@@ -1018,7 +1023,7 @@ function vFrames(m){
     </div>
     ${U.layout==='curto'?leftPanelHTML(s):(U.showMedia?`<div class="card mediacard">${mediaBoxHTML()}</div>`:'')+sceneBoxHTML(s)}
     ${tlCardHTML()}
-    <div class="sbar"><button class="btn" data-act="importHere">+ Importar imagens</button><button class="btn" data-act="replaceFrame">Trocar imagem</button><button class="btn" data-act="dupFrame">Duplicar</button><button class="btn" data-act="flipFrame">Espelhar</button><button class="btn bad" data-act="delFrame">Excluir</button><button class="btn" data-act="fitOpen" title="Iguala o tamanho do personagem entre imagens de tamanhos diferentes (ex.: 1080×1920 e 960×960)">⚖ Ajustar proporção</button><span class="mut" style="font-size:12px">Arraste miniaturas para reordenar · solte arquivos aqui para importar</span></div>
+    <div class="sbar"><button class="btn" data-act="importHere">+ Importar imagens</button><button class="btn" data-act="replaceFrame">Trocar imagem</button><button class="btn" data-act="dupFrame">Duplicar</button><button class="btn" data-act="flipFrame">Espelhar</button><button class="btn bad" data-act="delFrame">Excluir</button><button class="btn" data-act="fitOpen" title="Iguala o tamanho do personagem entre imagens de tamanhos diferentes (ex.: 1080×1920 e 960×960)">⚖ Ajustar proporção</button><button class="btn" data-act="sliceFile" title="Escolha uma imagem com vários personagens lado a lado: o programa separa cada um em um frame">✂ Dividir folha de sprites</button><span class="mut" style="font-size:12px">Arraste miniaturas para reordenar · solte arquivos aqui para importar</span></div>
     ${U.showStrip===false?'':stripAllHTML()}
   </div><aside class="props" id="props"></aside></div>`;
   renderProps();const st=$('#stage');fit(st);paintStage();renderTL();
@@ -1074,6 +1079,181 @@ function openFit(){
   <div class="ctl" style="justify-content:flex-end;flex-wrap:wrap"><button class="btn" data-act="closeModal">Cancelar</button><button class="btn" data-act="fitRestore">Restaurar originais</button><button class="btn pri" data-act="fitApply" ${pl?'':'disabled'}>Aplicar ajuste</button></div>`);
 }
 function fitScopeFrames(){return(U.fit&&U.fit.scope==='scene'?[curScene()]:P.scenes).flatMap(s=>s.frames)}
+/* ============ dividir folha de sprites (uma imagem com vários quadros) ============ */
+const SL={};
+function srcData(a,maxDim){
+  const s=maxDim?Math.min(1,maxDim/Math.max(a.w,a.h)):1,w=Math.max(1,Math.round(a.w*s)),h=Math.max(1,Math.round(a.h*s));
+  const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d',{willReadFrequently:true});x.imageSmoothingEnabled=s<1;x.drawImage(a.img,0,0,w,h);
+  return {d:x.getImageData(0,0,w,h),w,h,s};
+}
+function dataHasAlpha(d){const px=d.data,n=px.length/4;let c=0;for(let i=3;i<px.length;i+=4)if(px[i]<250)c++;return c/n>.01}
+function bgColor(d,w,h){
+  const px=d.data,cnt=new Map(),key=i=>((px[i]>>3)<<10)|((px[i+1]>>3)<<5)|(px[i+2]>>3),add=(x,y)=>{const k=key((y*w+x)*4);cnt.set(k,(cnt.get(k)||0)+1)};
+  for(let x=0;x<w;x++){add(x,0);add(x,h-1)}for(let y=0;y<h;y++){add(0,y);add(w-1,y)}
+  let bk=0,bc=0;cnt.forEach((c,k)=>{if(c>bc){bc=c;bk=k}});
+  let r=0,g=0,b=0,n=0;const acc=(x,y)=>{const i=(y*w+x)*4;if(key(i)===bk){r+=px[i];g+=px[i+1];b+=px[i+2];n++}};
+  for(let x=0;x<w;x++){acc(x,0);acc(x,h-1)}for(let y=0;y<h;y++){acc(0,y);acc(w-1,y)}
+  return n?[Math.round(r/n),Math.round(g/n),Math.round(b/n)]:[255,255,255];
+}
+/* máscara do primeiro plano: o fundo é o que se liga às bordas e tem a cor do fundo (a camisa branca por dentro do personagem é preservada) */
+function makeMask(d,w,h,tol,bg,alphaMode){
+  const px=d.data,n=w*h,m=new Uint8Array(n);
+  if(alphaMode){for(let i=0;i<n;i++)m[i]=px[i*4+3]>12?1:0;return m}
+  const t2=tol*tol,bgm=new Uint8Array(n),st=new Int32Array(n);let sp=0;
+  const isBg=i=>{const j=i*4;if(px[j+3]<=12)return true;const dr=px[j]-bg[0],dg=px[j+1]-bg[1],db=px[j+2]-bg[2];return dr*dr+dg*dg+db*db<=t2};
+  const push=i=>{if(!bgm[i]&&isBg(i)){bgm[i]=1;st[sp++]=i}};
+  for(let x=0;x<w;x++){push(x);push((h-1)*w+x)}for(let y=0;y<h;y++){push(y*w);push(y*w+w-1)}
+  while(sp>0){const i=st[--sp],x=i%w,y=(i-x)/w;if(x>0)push(i-1);if(x<w-1)push(i+1);if(y>0)push(i-w);if(y<h-1)push(i+w)}
+  for(let i=0;i<n;i++)m[i]=bgm[i]?0:1;return m;
+}
+function runsOf(arr,gap){const out=[];let s=-1,last=-1;for(let i=0;i<arr.length;i++){if(arr[i]>0){if(s<0)s=i;last=i}else if(s>=0&&i-last>gap){out.push([s,last]);s=-1}}if(s>=0)out.push([s,last]);return out}
+function dilate(mask,w,h,r){
+  if(r<=0)return mask;
+  const a=new Uint8Array(w*h),b=new Uint8Array(w*h);
+  for(let y=0;y<h;y++){const o=y*w;let last=-1e9;for(let x=0;x<w;x++){if(mask[o+x])last=x;if(x-last<=r)a[o+x]=1}last=1e9;for(let x=w-1;x>=0;x--){if(mask[o+x])last=x;if(last-x<=r)a[o+x]=1}}
+  for(let x=0;x<w;x++){let last=-1e9;for(let y=0;y<h;y++){if(a[y*w+x])last=y;if(y-last<=r)b[y*w+x]=1}last=1e9;for(let y=h-1;y>=0;y--){if(a[y*w+x])last=y;if(last-y<=r)b[y*w+x]=1}}
+  return b;
+}
+function orderBoxes(b){
+  b.sort((p,q)=>p.y+p.h/2-(q.y+q.h/2));const rows=[];
+  for(const x of b){const cy=x.y+x.h/2;let r=rows.find(r=>cy>=r.y0&&cy<=r.y1);if(!r){r={y0:x.y,y1:x.y+x.h,items:[]};rows.push(r)}else{r.y0=Math.min(r.y0,x.y);r.y1=Math.max(r.y1,x.y+x.h)}r.items.push(x)}
+  rows.sort((p,q)=>p.y0-q.y0);return rows.flatMap(r=>r.items.sort((p,q)=>p.x+p.w/2-(q.x+q.w/2)));
+}
+/* componentes conexos do primeiro plano (depois de engrossar o desenho por "gap/2" px): funciona mesmo quando fitas ou punhos de um quadro invadem a coluna do vizinho */
+function segment(mask,w,h,gap,_g2,minArea){
+  const r=Math.max(0,Math.round(gap/2)),dm=dilate(mask,w,h,r),n=w*h,lab=new Uint8Array(n),st=new Int32Array(n);let comps=[];
+  for(let s=0;s<n;s++){
+    if(!dm[s]||lab[s])continue;
+    let sp=0,area=0,x0=w,y0=h,x1=-1,y1=-1;st[sp++]=s;lab[s]=1;
+    while(sp>0){
+      const i=st[--sp],x=i%w,y=(i-x)/w;
+      if(mask[i]){area++;if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}
+      if(x>0&&dm[i-1]&&!lab[i-1]){lab[i-1]=1;st[sp++]=i-1}
+      if(x<w-1&&dm[i+1]&&!lab[i+1]){lab[i+1]=1;st[sp++]=i+1}
+      if(y>0&&dm[i-w]&&!lab[i-w]){lab[i-w]=1;st[sp++]=i-w}
+      if(y<h-1&&dm[i+w]&&!lab[i+w]){lab[i+w]=1;st[sp++]=i+w}
+    }
+    if(area>0&&area>=minArea)comps.push({x:x0,y:y0,w:x1-x0+1,h:y1-y0+1,area,on:true});
+  }
+  if(comps.length>2){
+    const as=comps.map(c=>c.area).sort((p,q)=>p-q),med=as[as.length>>1],big=comps.filter(c=>c.area>=med*.12),frag=comps.filter(c=>c.area<med*.12);
+    if(big.length&&frag.length){
+      for(const f of frag){let bj=null,bd=1e9;for(const o of big){const dx=Math.max(0,Math.max(o.x-(f.x+f.w),f.x-(o.x+o.w))),dy=Math.max(0,Math.max(o.y-(f.y+f.h),f.y-(o.y+o.h))),d=Math.hypot(dx,dy);if(d<bd){bd=d;bj=o}}
+        if(bj&&bd<=Math.max(24,r*3)){const x0=Math.min(bj.x,f.x),y0=Math.min(bj.y,f.y),x1=Math.max(bj.x+bj.w,f.x+f.w),y1=Math.max(bj.y+bj.h,f.y+f.h);bj.x=x0;bj.y=y0;bj.w=x1-x0;bj.h=y1-y0;bj.area+=f.area}}
+      comps=big;
+    }
+  }
+  return orderBoxes(comps);
+}function autoGap(mask,w,h,minArea){
+  const cands=[2,4,6,8,12,16,24,32,48,64].map(g=>Math.max(1,Math.round(g*w/1920))),res=cands.map(g=>({g,n:segment(mask,w,h,g,g,minArea).length}));
+  let bi=-1,bl=0;for(let i=0;i<res.length;){let j=i;while(j+1<res.length&&res[j+1].n===res[i].n)j++;const len=j-i+1;if(res[i].n>=2&&len>bl){bl=len;bi=i}i=j+1}
+  return bi>=0?res[bi].g:cands[3];
+}
+function sliceBoxes(S){
+  const A=S.A,w=A.w,h=A.h,minArea=Math.max(40,Math.round(w*h*.0003));
+  if(S.mode==='grid'){
+    const cols=Math.max(1,S.cols|0),rows=Math.max(1,S.rows|0),cw=w/cols,ch=h/rows,out=[];
+    for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+      const x0=Math.floor(c*cw),x1=Math.floor((c+1)*cw)-1,y0=Math.floor(r*ch),y1=Math.floor((r+1)*ch)-1;let xa=x1,xb=x0,ya=y1,yb=y0,area=0;
+      for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++)if(S.mask[y*w+x]){area++;if(x<xa)xa=x;if(x>xb)xb=x;if(y<ya)ya=y;if(y>yb)yb=y}
+      if(area>=minArea)out.push({x:xa,y:ya,w:xb-xa+1,h:yb-ya+1,area,on:true});
+    }
+    S.gap=null;S.boxes=out;return;
+  }
+  S.autoGapPx=S.autoGapPx||autoGap(S.mask,w,h,minArea);
+  const gap=S.gapUser!=null?Math.max(0,S.gapUser*A.s):S.autoGapPx;S.gap=gap;
+  S.boxes=segment(S.mask,w,h,gap,gap,minArea);
+}
+function sliceCompute(S,full){
+  if(full||!S.A){S.A=srcData(S.a,2400);S.alphaMode=dataHasAlpha(S.A.d);S.bg=S.alphaMode?null:bgColor(S.A.d,S.A.w,S.A.h)}
+  S.mask=makeMask(S.A.d,S.A.w,S.A.h,S.tol,S.bg,S.alphaMode);S.autoGapPx=null;sliceBoxes(S);
+}
+async function looksLikeSheet(a){
+  try{const S={a,tol:36,mode:'auto',gapUser:null};sliceCompute(S,true);const b=S.boxes;
+    if(b.length>=3)return true;if(b.length<2)return false;return Math.min(b[0].area,b[1].area)/Math.max(b[0].area,b[1].area)>.5}catch(e){return false}
+}
+function openSlicer(id,opts={}){
+  const a=assets[id];if(!a||a.kind==='audio')return;
+  Object.assign(SL,{a,id,tol:36,mode:'auto',gapUser:null,cols:4,rows:1,remove:true,align:'feet',pad:8,fromImport:!!opts.fromImport,at:opts.at??null,boxes:[],A:null});
+  openModal('<h3>Dividir folha de sprites</h3><p class="mut">Analisando a imagem…</p>');
+  setTimeout(()=>{try{sliceCompute(SL,true);renderSlicer()}catch(e){closeModal();toast('Não foi possível analisar a imagem: '+e.message)}},40);
+}
+function renderSlicer(){
+  const S=SL,a=S.a,sc=curScene();
+  const m=$('#modal .mbox');if(!m)return;m.style.width='min(960px,96vw)';
+  m.innerHTML=`<h3>Dividir folha de sprites</h3>
+   <p class="mut" style="font-size:13px;margin:0 0 8px">${esc(a.name)} · ${a.w}×${a.h}. O programa encontra cada personagem na imagem, recorta, alinha e cria os frames em ordem (esquerda para a direita, de cima para baixo). Clique num quadro da imagem para incluir ou excluir.</p>
+   <div class="slprev"><canvas id="slcv" class="bg-checker"></canvas></div>
+   <div id="slInfo" class="mut" style="font-size:12.5px;margin:6px 0"></div>
+   <div class="fgrid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+    <label>Modo<select class="in" data-bind="slMode"><option value="auto" ${S.mode==='auto'?'selected':''}>Automático (detecta cada personagem)</option><option value="grid" ${S.mode==='grid'?'selected':''}>Grade (colunas × linhas iguais)</option></select></label>
+    <label>Grade: colunas × linhas<span style="display:flex;gap:6px"><input class="in" type="number" min="1" max="64" value="${S.cols}" data-bind="slCols"><input class="in" type="number" min="1" max="64" value="${S.rows}" data-bind="slRows"></span></label>
+    <label>Sensibilidade do fundo (5 a 120)<input class="in" type="number" min="5" max="120" value="${S.tol}" data-bind="slTol" ${S.alphaMode?'disabled title="A imagem já tem transparência"':''}></label>
+    <label>Espaço mínimo entre quadros (px, vazio = automático)<input class="in" type="number" min="0" placeholder="auto" value="${S.gapUser??''}" data-bind="slGap"></label>
+    <label>Alinhar os frames pelo<select class="in" data-bind="slAlign"><option value="feet" ${S.align==='feet'?'selected':''}>Pés (base) e centro do corpo</option><option value="center" ${S.align==='center'?'selected':''}>Centro da imagem</option></select></label>
+    <label>Margem em volta (px)<input class="in" type="number" min="0" max="200" value="${S.pad}" data-bind="slPad"></label>
+    <label class="chk" style="flex-direction:row;color:var(--tx)"><input type="checkbox" data-bind="slRemove" ${S.remove?'checked':''} ${S.alphaMode?'disabled':''}> Remover o fundo (deixar transparente)</label>
+   </div>
+   <div class="ctl" style="justify-content:flex-end;flex-wrap:wrap;margin-top:10px"><button class="btn" data-act="closeModal">Cancelar</button><button class="btn" data-act="sliceSingle">${S.fromImport?'Usar como imagem única':'Fechar'}</button><button class="btn pri" id="slGo" data-act="sliceApply">✂ Dividir e adicionar à cena “${esc(sc.name)}”</button></div>`;
+  const cv=$('#slcv');cv.onclick=e=>{const r=cv.getBoundingClientRect(),x=(e.clientX-r.left)*(S.A.w/r.width),y=(e.clientY-r.top)*(S.A.h/r.height);const b=S.boxes.find(b=>x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h);if(b){b.on=!b.on;sliceUI()}};
+  sliceUI();
+}
+function sliceUI(){
+  const S=SL,A=S.A,cv=$('#slcv');if(!cv||!A)return;
+  cv.width=A.w;cv.height=A.h;const x=cv.getContext('2d');
+  const pd=new ImageData(new Uint8ClampedArray(A.d.data),A.w,A.h);
+  if(S.remove&&!S.alphaMode){for(let i=0;i<S.mask.length;i++)if(!S.mask[i])pd.data[i*4+3]=0}
+  x.putImageData(pd,0,0);
+  const lw=Math.max(2,A.w/450),fs=Math.max(12,A.w/45);x.lineWidth=lw;x.font='bold '+fs+'px sans-serif';
+  S.boxes.forEach((b,i)=>{x.setLineDash(b.on?[]:[lw*3,lw*2]);x.strokeStyle=b.on?'#8b5cf6':'#888';x.strokeRect(b.x-2,b.y-2,b.w+4,b.h+4);x.fillStyle=b.on?'#8b5cf6':'#666';x.fillRect(b.x-2,b.y-2-fs-4,fs*1.6,fs+4);x.fillStyle='#fff';x.fillText(String(i+1),b.x+2,b.y-6)});
+  const on=S.boxes.filter(b=>b.on).length,bgTxt=S.alphaMode?'imagem com transparência':'fundo detectado rgb('+S.bg.join(', ')+')';
+  const info=$('#slInfo');if(info)info.textContent=on+' de '+S.boxes.length+' quadros selecionados · '+bgTxt+(S.mode==='auto'?' · espaço mínimo '+Math.round(S.gap/A.s)+' px':'');
+  const go=$('#slGo');if(go){go.disabled=!on;go.textContent='✂ Dividir em '+on+' frame'+(on===1?'':'s')+' e adicionar à cena “'+curScene().name+'”'}
+}
+async function sliceApply(){
+  const S=SL,A=S.A,boxes=S.boxes.filter(b=>b.on);if(!boxes.length){toast('Nenhum quadro selecionado.');return}
+  const go=$('#slGo');if(go){go.disabled=true;go.textContent='Gerando frames…'}
+  await new Promise(r=>setTimeout(r,30));
+  const F=srcData(S.a,0),W=F.w,H=F.h,k=1/A.s,FR=S.alphaMode?makeMask(F.d,W,H,S.tol,null,true):makeMask(F.d,W,H,S.tol,S.bg,false),px=F.d.data;
+  /* fundo transparente com borda suave */
+  if(S.remove&&!S.alphaMode){
+    const t=S.tol,bg=S.bg;
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,j=i*4;
+      if(!FR[i]){px[j+3]=0;continue}
+      const edge=(x>0&&!FR[i-1])||(x<W-1&&!FR[i+1])||(y>0&&!FR[i-W])||(y<H-1&&!FR[i+W]);
+      if(edge){const dr=px[j]-bg[0],dg=px[j+1]-bg[1],db=px[j+2]-bg[2],d=Math.sqrt(dr*dr+dg*dg+db*db);px[j+3]=Math.round(255*Math.max(0,Math.min(1,(d-t*.6)/(t*.9))))}
+    }
+  }
+  const full=document.createElement('canvas');full.width=W;full.height=H;full.getContext('2d').putImageData(F.d,0,0);
+  /* retângulo e centro de massa exatos de cada quadro, na resolução original */
+  const sp=boxes.map(b=>{
+    const rx0=Math.max(0,Math.floor(b.x*k)-3),ry0=Math.max(0,Math.floor(b.y*k)-3),rx1=Math.min(W-1,Math.ceil((b.x+b.w)*k)+3),ry1=Math.min(H-1,Math.ceil((b.y+b.h)*k)+3);
+    let xa=rx1,xb=rx0,ya=ry1,yb=ry0,n=0,sx=0;
+    for(let y=ry0;y<=ry1;y++)for(let x=rx0;x<=rx1;x++)if(FR[y*W+x]){n++;sx+=x;if(x<xa)xa=x;if(x>xb)xb=x;if(y<ya)ya=y;if(y>yb)yb=y}
+    return {x:xa,y:ya,w:xb-xa+1,h:yb-ya+1,cx:n?sx/n:(xa+xb)/2};
+  });
+  const pad=Math.max(0,S.pad|0);let cw,ch;
+  if(S.align==='feet'){const half=Math.ceil(Math.max(...sp.map(s=>Math.max(s.cx-s.x+1,s.x+s.w-s.cx))))+pad;cw=half*2;ch=Math.max(...sp.map(s=>s.h))+pad*2}
+  else{cw=Math.max(...sp.map(s=>s.w))+pad*2;ch=Math.max(...sp.map(s=>s.h))+pad*2}
+  const base=(S.a.name||'folha').replace(/\.[^.]+$/,''),files=[];
+  for(let i=0;i<sp.length;i++){
+    const s=sp[i],c=document.createElement('canvas');c.width=cw;c.height=ch;const x=c.getContext('2d');x.imageSmoothingEnabled=false;
+    if(!S.alphaMode&&!S.remove){x.fillStyle='rgb('+S.bg.join(',')+')';x.fillRect(0,0,cw,ch)}
+    let dx,dy;if(S.align==='feet'){dx=Math.round(cw/2-(s.cx-s.x));dy=ch-pad-s.h}else{dx=Math.round((cw-s.w)/2);dy=Math.round((ch-s.h)/2)}
+    x.drawImage(full,s.x,s.y,s.w,s.h,dx,dy,s.w,s.h);
+    const blob=await new Promise(r=>c.toBlob(r,'image/png'));files.push(new File([blob],base+'_'+String(i+1).padStart(2,'0')+'.png',{type:'image/png'}));
+    if(i%3===2)await new Promise(r=>setTimeout(r,0));
+  }
+  const ids=[];for(const f of files)ids.push(await ingest(f));
+  const sc=curScene();closeModal();
+  mut(()=>{regMedia(ids);const at=S.at==null?sc.frames.length:S.at;sc.frames.splice(at,0,...ids.map(newFrame));U.sel=at});
+  toast(ids.length+' frames criados ('+cw+'×'+ch+' px cada) e adicionados à cena “'+sc.name+'”.');
+}
+function sliceSingle(){
+  const S=SL;closeModal();
+  if(S.fromImport){const sc=curScene();mut(()=>{regMedia([S.id]);const at=S.at==null?sc.frames.length:S.at;sc.frames.splice(at,0,newFrame(S.id));U.sel=at});toast('Imagem adicionada como 1 frame.')}
+}
+
 /* ============ IA Studio ============ */
 function aiState(){
   if(!P.ai)P.ai={desc:'',dir:'',keep:'Preservar identidade, textura, proporções, iluminação e cenário.',dur:6,n:9,slots:[]};
@@ -1345,6 +1525,9 @@ document.addEventListener('drop',e=>{
 
 /* início */
 Object.assign(acts,{
+  sliceApply(){sliceApply()},sliceSingle(){sliceSingle()},
+  async sliceFile(){const [f]=await pick(false,'image/png,image/webp,image/jpeg');if(!f)return;try{const id=await ingest(f);openSlicer(id,{fromImport:true})}catch(e){toast('Não foi possível ler a imagem.')}},
+  mediaSlice(b){openSlicer(b.dataset.id)},
   ovAddTrack(){mut(()=>{P.ovTracks=Math.min(6,(P.ovTracks||1)+1)})},
   ovRmTrack(){mut(()=>{P.ovTracks=Math.max(1,(P.ovTracks||1)-1)})},
   ovDel(){delOverlay()},
@@ -1366,6 +1549,15 @@ Object.assign(acts,{
 });
 {
   const ovl=()=>P.overlays.find(x=>x.id===U.ov),rep=()=>{if(U.view==='frames')paintStage();else paintProjectAt(U.ph)};
+  const slRe=(full)=>{try{sliceCompute(SL,false);sliceUI()}catch(e){toast('Erro na análise: '+e.message)}};
+  Object.assign(binds,{
+    slMode:v=>{SL.mode=v;sliceBoxes(SL);sliceUI()},
+    slCols:v=>{SL.cols=Math.max(1,+v||1);if(SL.mode==='grid'){sliceBoxes(SL);sliceUI()}},
+    slRows:v=>{SL.rows=Math.max(1,+v||1);if(SL.mode==='grid'){sliceBoxes(SL);sliceUI()}},
+    slTol:v=>{SL.tol=Math.max(5,Math.min(120,+v||36));slRe()},
+    slGap:v=>{SL.gapUser=(v===''||v==null)?null:Math.max(0,+v);sliceBoxes(SL);sliceUI()},
+    slAlign:v=>{SL.align=v},slPad:v=>{SL.pad=Math.max(0,+v||0)},slRemove:v=>{SL.remove=v;sliceUI()}
+  });
   Object.assign(binds,{
     ovstart:v=>mut(()=>{ovl().start=Math.max(0,+v||0)}),ovdur:v=>mut(()=>{ovl().dur=Math.max(.1,+v||1)}),
     ovx:v=>mut(()=>{ovl().x=+v||0}),ovy:v=>mut(()=>{ovl().y=+v||0}),ovs:v=>mut(()=>{ovl().s=Math.max(5,+v||50)}),
