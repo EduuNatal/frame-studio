@@ -210,8 +210,16 @@ body.dragging-tl,body.dragging-tl *{user-select:none!important;-webkit-user-sele
 .tllabels .vl{flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;padding:4px 6px;border-top:1px solid var(--line)}
 .tllabels .vl span{display:flex;gap:2px}
 .tb{background:none;border:0;cursor:pointer;padding:0 2px;font-size:13px;color:var(--tx)}
-.tlscroll{overflow:auto}
-.tlwrap{max-height:268px}
+.tlscroll{overflow:scroll}
+.tlwrap{height:var(--tlh,300px)}
+.tlscroll::-webkit-scrollbar{width:13px;height:13px}
+.tlscroll::-webkit-scrollbar-track{background:#0c0a14}
+.tlscroll::-webkit-scrollbar-thumb{background:#3b2f66;border-radius:8px;border:2px solid #0c0a14}
+.tlscroll::-webkit-scrollbar-thumb:hover{background:var(--ac)}
+.tlscroll::-webkit-scrollbar-corner{background:#0c0a14}
+.tlsplit{height:9px;margin:-4px 0 4px;cursor:ns-resize;border-radius:5px;position:relative}
+.tlsplit::after{content:"";position:absolute;left:50%;top:3px;width:46px;height:3px;border-radius:3px;background:#3b2f66;transform:translateX(-50%)}
+.tlsplit:hover::after{background:var(--ac)}
 .tllabels{overflow:hidden}
 .ruler{position:sticky;top:0;z-index:5;background:var(--bg2)}
 .mitem.sel{border-color:var(--ac);background:#1d1636}
@@ -716,7 +724,7 @@ function vSoon(m){m.innerHTML=`<div class="soonbox"><div><h2>${U.view==='comp'?'
 const ckl=()=>P.audio.find(x=>x.id===U.clip);
 const tlLen=()=>Math.max(projectSegs().reduce((a,g)=>a+g.dur,0),audioEnd(),overlayEnd(),10);
 const fmtTC=(t,fps=24)=>{t=Math.max(0,t);const f=Math.min(fps-1,Math.floor((t%1)*fps));return pad(Math.floor(t/3600))+':'+pad(Math.floor(t/60)%60)+':'+pad(Math.floor(t)%60)+':'+pad(f)};
-let SK=false,TD=null,TDp=false;
+let SK=false,TD=null,TDp=false,TDs=null;
 function paintProjectAt(t){const pv=$('#pv');if(!pv)return;const segs=projectSegs();if(!segs.length){paint(pv,null,{q:.33,t});return}const vt=segs.reduce((a,g)=>a+g.dur,0);const {seg,i}=locate(segs,Math.min(t,vt-1e-6));paint(pv,seg.scene.frames[seg.seq[i]],{q:.33,t});const tt=$('#pvTime');if(tt)tt.textContent=fmtT(t)+' / '+fmtT(Math.max(vt,audioEnd()))}
 function phEl(){const e=$('#ph');if(e)e.style.left=(U.ph*U.pps)+'px';const tc=$('#tcode');if(tc)tc.textContent=fmtTC(U.ph)}
 /* agulha acompanha o frame selecionado */
@@ -736,7 +744,8 @@ function setPh(t){
   U.ph=t;phEl();paintProjectAt(t);
 }
 function tlCardHTML(){
-  return `<div class="card tlcard"><div class="tltools">
+  if(!U.tlH){try{U.tlH=+localStorage.getItem('fs_tlh')||300}catch(e){U.tlH=300}}document.documentElement.style.setProperty('--tlh',U.tlH+'px');
+  return `<div class="card tlcard"><div class="tlsplit" data-split="1" title="Arraste para aumentar ou diminuir a área da timeline"></div><div class="tltools">
    <button class="ic" data-act="undo" title="Desfazer (Ctrl+Z)">↶</button><button class="ic" data-act="redo" title="Refazer (Ctrl+Y)">↷</button>
    <button class="ic" data-act="tlDel" title="Excluir o clipe selecionado (Delete)">🗑</button>
    <button class="ic" data-act="tlCut" title="Cortar na agulha (Ctrl+B): divide a cena ou o clipe de áudio selecionado">✂</button>
@@ -808,12 +817,12 @@ function drawOverlays(ctx,q,t){
   for(const o of list){const a=ovFrameAsset(o,t);if(!a||!assets[a])continue;ctx.setTransform(q,0,0,q,0,0);drawFrame(ctx,{a,dur:1,ox:o.x,oy:o.y,s:o.s,flip:o.flip,op:o.op},q,null,1)}
 }
 function addOverlay(id,track,start){
-  mut(()=>{const tk2=Math.max(2,track),o={id:uid(),a:id,track:tk2,start:freeStart(tk2,Math.max(0,start),3),dur:3,x:0,y:0,s:50,op:100,flip:false};P.overlays.push(o);P.ovTracks=Math.max(P.ovTracks||1,o.track-1);U.ov=o.id;U.clip=null});
+  mut(()=>{const st0=+Math.max(0,start).toFixed(2),tk2=freeTrackFor(Math.max(2,track),st0,3),o={id:uid(),a:id,track:tk2,start:st0,dur:3,x:0,y:0,s:50,op:100,flip:false};P.overlays.push(o);P.ovTracks=Math.max(P.ovTracks||1,o.track-1);U.ov=o.id;U.clip=null});
   toast('Imagem sobreposta no vídeo. Ajuste posição e escala abaixo da timeline.');
 }
 function addOverlaySeq(sid,track,start){
   const q=findSeq(sid);if(!q||!q.frames.length)return;
-  mut(()=>{const fps=q.fps||12,o={id:uid(),seq:sid,a:q.frames[0],track:Math.max(2,track),start:freeStart(Math.max(2,track),Math.max(0,start),Math.max(3,q.frames.length/fps)),dur:+Math.max(3,q.frames.length/fps).toFixed(2),x:0,y:0,s:100,op:100,flip:false,fps,off:0};P.overlays.push(o);P.ovTracks=Math.max(P.ovTracks||1,o.track-1);U.ov=o.id;U.clip=null});
+  mut(()=>{const fps=q.fps||12,d3=+Math.max(3,q.frames.length/fps).toFixed(2),st0=+Math.max(0,start).toFixed(2),tk3=freeTrackFor(Math.max(2,track),st0,d3),o={id:uid(),seq:sid,a:q.frames[0],track:tk3,start:st0,dur:d3,x:0,y:0,s:100,op:100,flip:false,fps,off:0};P.overlays.push(o);P.ovTracks=Math.max(P.ovTracks||1,o.track-1);U.ov=o.id;U.clip=null});
   toast('Animação “'+q.name+'” colocada na timeline. Arraste a borda direita para repetir por mais tempo.');
 }
 function insertSeqScene(q,tt){
@@ -821,6 +830,31 @@ function insertSeqScene(q,tt){
   mut(()=>{const ns={...newScene(q.name,near?near.act:'meio',q.fps||12),target:Math.max(24,q.frames.length),frames:q.frames.map(newFrame)};
     const at=ref?P.scenes.indexOf(ref.scene):(near?P.scenes.indexOf(near)+1:P.scenes.length);P.scenes.splice(at,0,ns);U.sceneId=ns.id;U.sel=0});
   toast('“'+q.name+'” entrou como uma nova cena, na posição em que você soltou.');
+}
+/* Delete: tira o clipe da timeline sem apagar a mídia da biblioteca */
+function deleteSceneNow(s){
+  if(P.scenes.length<2){toast('O projeto precisa ter ao menos uma cena.');return}
+  mut(()=>{P.scenes.splice(P.scenes.indexOf(s),1);U.exp=null;U.sceneId=P.scenes[0].id;U.sel=0});
+  toast('Clipe removido da timeline. A mídia continua na aba Mídia (Ctrl+Z desfaz).');
+}
+function removeFromTimeline(){
+  const sel=[...U.msel],seqIds=new Set(sel.filter(x=>x.startsWith('seq:')).map(x=>x.slice(4))),assetIds=new Set(sel.filter(x=>!x.startsWith('seq:'))),frameAssets=new Set(assetIds);
+  seqIds.forEach(id=>{const q=findSeq(id);if(q)q.frames.forEach(a=>frameAssets.add(a))});
+  const ovHit=P.overlays.filter(o=>o.seq?seqIds.has(o.seq):assetIds.has(o.a)),auHit=P.audio.filter(k=>assetIds.has(k.a)),scHit=P.scenes.filter(s=>s.frames.length&&s.frames.every(f=>frameAssets.has(f.a)));
+  const n=ovHit.length+auHit.length+scHit.length;
+  if(!n){toast('Esses itens não estão na timeline.');return}
+  mut(()=>{
+    P.overlays=P.overlays.filter(o=>!ovHit.includes(o));P.audio=P.audio.filter(k=>!auHit.includes(k));
+    for(const s of scHit){if(P.scenes.length>1)P.scenes.splice(P.scenes.indexOf(s),1);else s.frames=[]}
+    U.ov=null;U.clip=null;
+  });
+  toast(n+' clipe(s) removido(s) da timeline. Os itens continuam na aba Mídia (Ctrl+Z desfaz).');
+}
+/* camadas: se o clipe cairia por cima de outro, ele sobe para a primeira faixa livre acima (e cria a faixa se precisar) */
+function freeTrackFor(track,start,dur,ign){
+  const clash=tr=>P.overlays.some(o=>o.track===tr&&o.id!==ign&&start<o.start+o.dur-1e-6&&start+dur>o.start+1e-6);
+  let t=Math.max(2,track);while(clash(t)&&t<9)t++;
+  return t;
 }
 /* primeiro ponto livre da faixa a partir de "start": um clipe novo nunca cai por cima (e esconde) outro */
 function freeStart(track,start,dur,ign){
@@ -928,8 +962,8 @@ function dropMediaMulti(t,tt,tk){
     let st=tt;
     for(const id of ids){
       if(isAud(id)){P.audio.push(audClip(id,st));st+=assets[id].dur;continue}
-      if(id.startsWith('seq:')){const q=findSeq(id.slice(4));if(!q)continue;const fps=q.fps||12,d=+Math.max(3,q.frames.length/fps).toFixed(2),s0=freeStart(tr,st,d);P.overlays.push({id:uid(),seq:q.id,a:q.frames[0],track:tr,start:s0,dur:d,x:0,y:0,s:100,op:100,flip:false,fps,off:0});st=s0+d}
-      else{const s0=freeStart(tr,st,3);P.overlays.push({id:uid(),a:id,track:tr,start:s0,dur:3,x:0,y:0,s:50,op:100,flip:false});st=s0+3}
+      if(id.startsWith('seq:')){const q=findSeq(id.slice(4));if(!q)continue;const fps=q.fps||12,d=+Math.max(3,q.frames.length/fps).toFixed(2),s0=st,tr2=freeTrackFor(tr,s0,d);P.overlays.push({id:uid(),seq:q.id,a:q.frames[0],track:tr2,start:s0,dur:d,x:0,y:0,s:100,op:100,flip:false,fps,off:0});P.ovTracks=Math.max(P.ovTracks||1,tr2-1);st=s0+d}
+      else{const s0=st,tr2=freeTrackFor(tr,s0,3);P.overlays.push({id:uid(),a:id,track:tr2,start:s0,dur:3,x:0,y:0,s:50,op:100,flip:false});P.ovTracks=Math.max(P.ovTracks||1,tr2-1);st=s0+3}
     }
     P.ovTracks=Math.max(P.ovTracks||1,tr-1);
   });
@@ -1017,6 +1051,8 @@ function snapT(t,ignoreId,edgeLen){
 const tlX=e=>{const r=$('.tlin');return r?e.clientX-r.getBoundingClientRect().left:0};
 document.addEventListener('pointerdown',e=>{
   if(!e.target.closest)return;
+  if(e.target.closest('[data-split]')){TDs={y0:e.clientY,h0:U.tlH||300};document.body.classList.add('dragging-tl');e.preventDefault();return}
+  if(e.target.closest('.tlwrap'))U.selSrc='tl';
   const clip=e.target.closest('[data-clip]'),vc=e.target.closest('[data-vc]'),oc=e.target.closest('[data-oc]');
   if(oc){const o=P.overlays.find(x=>x.id===oc.dataset.oc);if(!o)return;stop(true);U.ov=o.id;U.clip=null;pushHist();TD={t:'o',o,mode:e.target.dataset.h||'move',x0:e.clientX,s0:o.start,d0:o.dur};e.preventDefault();renderTL();return}
   if(clip){
@@ -1035,6 +1071,7 @@ document.addEventListener('pointerdown',e=>{
   if(sk){e.preventDefault();TDp=true;U.clip=null;U.ov=null;document.body.classList.add('dragging-tl');const s0=window.getSelection&&window.getSelection();if(s0)s0.removeAllRanges();setPh(tlX(e)/U.pps)}
 });
 window.addEventListener('pointermove',e=>{
+  if(TDs){U.tlH=Math.max(120,Math.min(Math.round(innerHeight*.7),Math.round(TDs.h0+(TDs.y0-e.clientY))));document.documentElement.style.setProperty('--tlh',U.tlH+'px');return}
   if(TDp){setPh(tlX(e)/U.pps);return}
   if(!TD)return;
   if(TD.t==='o'){
@@ -1059,9 +1096,13 @@ window.addEventListener('pointermove',e=>{
 });
 window.addEventListener('pointerup',()=>{
   document.body.classList.remove('dragging-tl');
+  if(TDs){TDs=null;try{localStorage.setItem('fs_tlh',String(U.tlH))}catch(e){}return}
   if(TDp){TDp=false;if(U.view==='frames')renderProps();return}
   if(!TD)return;const t=TD;TD=null;
-  if(t.t==='o'){autosave();if(U.view==='frames')paintStage();else paintProjectAt(U.ph);return}
+  if(t.t==='o'){
+    const o=t.o,nt=freeTrackFor(o.track,o.start,o.dur,o.id);   /* soltou por cima de outro clipe: vira uma camada acima */
+    if(nt!==o.track){o.track=nt;P.ovTracks=Math.max(P.ovTracks||1,nt-1);renderTL();toast('Clipe colocado em uma camada acima (Vídeo '+nt+').')}
+    autosave();if(U.view==='frames')paintStage();else paintProjectAt(U.ph);return}
   if(t.t==='a'){autosave();if(U.view==='dash')paintProjectAt(U.ph);return}
   if(t.mode==='vr'){autosave();render();return}
   if(!t.moved||U.lockV){
@@ -1079,7 +1120,7 @@ window.addEventListener('pointerup',()=>{
 });
 document.addEventListener('keydown',e=>{
   const tag=(e.target.tagName||'').toLowerCase();if(['input','textarea','select'].includes(tag))return;
-  if(e.key==='Delete'&&(U.view==='frames'||U.view==='dash')){e.preventDefault();acts.tlDel()}
+  if((e.key==='Delete'||e.key==='Backspace')&&(U.view==='frames'||U.view==='dash')){e.preventDefault();acts.delKey()}
   else if(e.ctrlKey&&e.key.toLowerCase()==='b'&&(U.view==='frames'||U.view==='dash')){e.preventDefault();acts.tlCut()}
 });
 
@@ -1705,7 +1746,11 @@ Object.assign(acts,{
   sliceApply(){sliceApply()},sliceSingle(){sliceSingle()},
   async sliceFile(){const [f]=await pick(false,'image/png,image/webp,image/jpeg');if(!f)return;try{const id=await ingest(f);openSlicer(id,{fromImport:true})}catch(e){toast('Não foi possível ler a imagem.')}},
   mediaSlice(b){openSlicer(b.dataset.id)},
-  mediaSel(b,e){const id=b.dataset.id;if(e.ctrlKey||e.shiftKey||e.metaKey){if(U.msel.has(id))U.msel.delete(id);else U.msel.add(id)}else U.msel=new Set([id]);mediaSelRefresh()},
+  delKey(){
+    if(U.selSrc==='media'&&U.msel.size){removeFromTimeline();return}
+    if(U.selSrc==='tl')acts.tlDel();
+  },
+  mediaSel(b,e){U.selSrc='media';const id=b.dataset.id;if(e.ctrlKey||e.shiftKey||e.metaKey){if(U.msel.has(id))U.msel.delete(id);else U.msel.add(id)}else U.msel=new Set([id]);mediaSelRefresh()},
   mediaSelAll(){const all=mediaOrder();U.msel=(U.msel.size&&U.msel.size===all.length)?new Set():new Set(all);mediaSelRefresh()},
   ovAddTrack(){mut(()=>{P.ovTracks=Math.min(6,(P.ovTracks||1)+1)})},
   ovRmTrack(){mut(()=>{P.ovTracks=Math.max(1,(P.ovTracks||1)-1)})},
@@ -1718,7 +1763,7 @@ Object.assign(acts,{
     else if(m==='scene'){const s=curScene();mut(()=>{s.frames.push(newFrame(id));U.sel=s.frames.length-1});toast('Imagem adicionada ao fim da cena “'+s.name+'”.')}
     else addOverlay(id,2,U.ph)},
   tlCut(){if(U.ov){cutOverlay();return}if(ckl()){if(U.lockA){toast('A faixa de áudio está travada.');return}acts.splitClip()}else{if(U.lockV){toast('A faixa de vídeo está travada.');return}cutVideo()}},
-  tlDel(){if(U.ov){delOverlay();return}if(ckl()){if(U.lockA){toast('A faixa de áudio está travada.');return}acts.delClip()}else{if(U.lockV){toast('A faixa de vídeo está travada.');return}acts.delScene()}},
+  tlDel(){if(U.ov){delOverlay();return}if(ckl()){if(U.lockA){toast('A faixa de áudio está travada.');return}acts.delClip()}else{if(U.lockV){toast('A faixa de vídeo está travada.');return}deleteSceneNow(curScene())}},
   tlSnap(b){U.snap=!U.snap;b.classList.toggle('on',U.snap);toast(U.snap?'Ímã ligado.':'Ímã desligado.')},
   tlZoomIn(){U.pps=Math.min(200,Math.round(U.pps*1.25));const z=$('#tlz');if(z)z.value=U.pps;renderTL()},
   tlZoomOut(){U.pps=Math.max(10,Math.round(U.pps/1.25));const z=$('#tlz');if(z)z.value=U.pps;renderTL()},
