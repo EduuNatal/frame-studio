@@ -210,7 +210,11 @@ body.dragging-tl,body.dragging-tl *{user-select:none!important;-webkit-user-sele
 .tllabels .vl{flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;padding:4px 6px;border-top:1px solid var(--line)}
 .tllabels .vl span{display:flex;gap:2px}
 .tb{background:none;border:0;cursor:pointer;padding:0 2px;font-size:13px;color:var(--tx)}
-.tlscroll{overflow-y:hidden}
+.tlscroll{overflow:auto}
+.tlwrap{max-height:268px}
+.tllabels{overflow:hidden}
+.ruler{position:sticky;top:0;z-index:5;background:var(--bg2)}
+.mitem.sel{border-color:var(--ac);background:#1d1636}
 .ruler{cursor:ew-resize}
 .mt{position:absolute;bottom:0;width:1px;height:6px;background:#3a3550}
 .tk{font-variant-numeric:tabular-nums}
@@ -229,11 +233,11 @@ body.dragging-tl,body.dragging-tl *{user-select:none!important;-webkit-user-sele
 .fstage>.scenebox,.fstage>.tlcard,.fstage>.tr,.fstage>.sbar,.fstage>.strip,.fstage>.fbar{flex:none}
 .fstage .stagebox{flex:1 0 250px}
 /* Video curto (igual ao Filmora): biblioteca | propriedades | player na lateral direita inteira; timeline embaixo das duas primeiras colunas */
-.lay-curto{grid-template-columns:minmax(170px,22%) minmax(190px,22%) minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr) auto!important;grid-template-areas:"left props player" "timeline timeline player"}
+.lay-curto{grid-template-columns:minmax(340px,46%) minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr) auto!important;grid-template-areas:"left player" "timeline player"}
 .lay-curto .fstage{display:contents}
-.lay-curto .fbar,.lay-curto .strip,.lay-curto .sbar{display:none}
+.lay-curto .fbar,.lay-curto .strip,.lay-curto .fstage>.sbar{display:none}
 .lay-curto .leftpanel{grid-area:left}
-.lay-curto .props{grid-area:props;display:block;min-height:0;overflow:auto}
+.lay-curto .props{display:none}
 .lay-curto .playcol{grid-area:player;flex:none;min-height:0;min-width:0}
 .lay-curto .tlcard{grid-area:timeline;min-width:0}
 .playcol{display:flex;flex-direction:column;gap:10px;flex:1 0 270px;min-height:0;min-width:0}
@@ -354,7 +358,7 @@ function newProject(){return {name:'Gato Narrador',w:1080,h:1920,fps:12,pixel:fa
   scenes:[newScene('Introdução','comeco'),newScene('Desenvolvimento','meio'),newScene('Conclusão','fim')]}}
 let P=newProject();
 const assets={};   // id -> {id,name,type,w,h,bytes,blob,url,img}
-const U={ov:null,leftTab:'media',showMedia:false,snap:true,lockV:false,lockA:false,layout:'padrao',zoom:1,guides:{},hideProps:false,playAll:true,pps:40,ph:0,clip:null,grid:false,view:'dash',sceneId:null,sel:0,exp:null,bg:'checker',bgc:'#3b82f6',q:.5,onion:{on:true,b:2,a:2,op:40},mode:'normal',loop:true,speed:1};
+const U={msel:new Set(),ov:null,leftTab:'media',showMedia:false,snap:true,lockV:false,lockA:false,layout:'curto',zoom:1,guides:{},hideProps:false,playAll:true,pps:40,ph:0,clip:null,grid:true,view:'frames',sceneId:null,sel:0,exp:null,bg:'checker',bgc:'#3b82f6',q:.5,onion:{on:true,b:2,a:2,op:40},mode:'normal',loop:true,speed:1};
 const ACTS=[['comeco','COMEÇO','Introdução e apresentação'],['meio','MEIO','Desenvolvimento e acontecimentos'],['fim','FIM','Conclusão e encerramento']];
 const curScene=()=>P.scenes.find(s=>s.id===U.sceneId)||P.scenes[0];
 const curFrame=()=>curScene().frames[U.sel];
@@ -365,7 +369,7 @@ const sceneDur=s=>seqOf(s).length/s.fps;
 let hist=[],redoS=[];
 function pushHist(){hist.push(JSON.stringify(P));if(hist.length>80)hist.shift();redoS.length=0}
 function mut(fn){pushHist();fn();changed()}
-function fixSel(){if(!P.audio)P.audio=[];if(!P.seqs)P.seqs=[];if(!P.media)P.media=[];if(!P.overlays)P.overlays=[];if(!P.ovTracks)P.ovTracks=1;if(!P.scenes.find(s=>s.id===U.sceneId))U.sceneId=P.scenes[0].id;if(U.exp&&!P.scenes.find(s=>s.id===U.exp))U.exp=null;const s=curScene();U.sel=Math.max(0,Math.min(U.sel,s.frames.length-1))}
+function fixSel(){if(!P.audio)P.audio=[];if(!P.seqs)P.seqs=[];if(!P.media)P.media=[];if(!P.overlays)P.overlays=[];if(!P.ovTracks)P.ovTracks=2;if(!P.scenes.find(s=>s.id===U.sceneId))U.sceneId=P.scenes[0].id;if(U.exp&&!P.scenes.find(s=>s.id===U.exp))U.exp=null;const s=curScene();U.sel=Math.max(0,Math.min(U.sel,s.frames.length-1))}
 function changed(){fixSel();render();autosave()}
 function undo(){if(!hist.length)return;redoS.push(JSON.stringify(P));P=JSON.parse(hist.pop());changed()}
 function redo(){if(!redoS.length)return;hist.push(JSON.stringify(P));P=JSON.parse(redoS.pop());changed()}
@@ -697,7 +701,7 @@ function openSettings(){
 }
 
 /* ============ navegação ============ */
-const NAV=[['dash','Projeto','Dashboard e cenas'],['frames','Frames','Animação manual'],['ai','IA Studio','Geração assistida'],['comp','Compositor','Fase 2 — montagem de camadas',1],['lib','Biblioteca','Fase 3 — materiais reutilizáveis',1],['lab','Laboratório','Testes e desempenho']];
+const NAV=[['frames','Frames','Animação manual'],['ai','IA Studio','Geração assistida'],['comp','Compositor','Fase 2 — montagem de camadas',1],['lib','Biblioteca','Fase 3 — materiais reutilizáveis',1],['lab','Laboratório','Testes e desempenho']];
 function renderNav(){$('#side').innerHTML=NAV.map(n=>`<button class="nav ${U.view===n[0]?'on':''} ${n[3]?'soon':''}" data-act="nav" data-v="${n[0]}"><b>${n[1]}</b><small>${n[2]}</small></button>`).join('')+'<div class="grow"></div><button class="nav" data-act="export"><b>Exportação</b><small>WebM · PNG</small></button><button class="nav" data-act="settings"><b>Configurações</b><small>Resolução, FPS, pixel art</small></button>'}
 function go(v){stop(true);U.view=v;render()}
 function render(){
@@ -748,7 +752,7 @@ function tlCardHTML(){
 function tlLanes(){const cl=[...P.audio].sort((a,b)=>a.start-b.start),ends=[],map={};for(const k of cl){let l=ends.findIndex(e=>e<=k.start+1e-6);if(l<0){l=ends.length;ends.push(0)}ends[l]=k.start+(k.out-k.in);map[k.id]=l}return {map,n:Math.max(1,ends.length)}}
 function renderTL(){
   const box=$('#tl');if(!box)return;
-  const pps=U.pps,L=tlLen()+3,W=Math.ceil(L*pps),segs=projectSegs(),keep=$('.tlscroll',box),sl=keep?keep.scrollLeft:0;
+  const pps=U.pps,L=tlLen()+3,W=Math.ceil(L*pps),segs=projectSegs(),keep=$('.tlscroll',box),sl=keep?keep.scrollLeft:0,slt=keep?keep.scrollTop:0;
   const step=[1,2,5,10,15,30,60,120].find(c=>c*pps>=96)||120;
   let ticks='';for(let t=0;t<=L;t+=step){ticks+=`<span class="tk" style="left:${t*pps}px">${fmtTC(t)}</span>`;for(let m=1;m<5;m++){const tt=t+step*m/5;if(tt<=L)ticks+=`<i class="mt" style="left:${tt*pps}px"></i>`}}
   const idx=new Map(P.scenes.map((s,i)=>[s.id,i+1]));
@@ -768,14 +772,15 @@ function renderTL(){
    <label class="chk"><input type="checkbox" data-bind="ckmute" ${k.mute?'checked':''}> Mudo</label></div>
 `
    :`<div class="mut" style="font-size:12px;margin-top:8px"><b style="color:var(--ac2)">Cena ${idx.get(sc.id)}</b> · ${esc(sc.name)} · ${sc.frames.length} imagens · ${sceneDur(sc).toFixed(1)} s</div>`;
-  box.innerHTML=`<div class="tlwrap"><div class="tllabels"><div class="rl"></div>${ovLabels}
+  box.innerHTML=`<div class="tlwrap"><div class="tllabels"><div class="rl"><button class="tb" data-act="ovAddTrack" title="Adicionar faixa de vídeo para sobrepor takes">＋ Faixa</button></div>${ovLabels}
     <div class="vl" style="height:58px"><b>Vídeo 1</b><span><button class="tb" data-act="tlLockV" title="Travar faixa de vídeo">${U.lockV?'🔒':'🔓'}</button></span></div>
     <div class="vl" style="height:${ah}px"><b>Áudio 1</b><span><button class="tb" data-act="tlMuteA" title="Silenciar todo o áudio">${P.audioMuted?'🔇':'🔊'}</button><button class="tb" data-act="tlLockA" title="Travar faixa de áudio">${U.lockA?'🔒':'🔓'}</button></span></div></div>
    <div class="tlscroll"><div class="tlin" style="width:${W}px"><div class="ruler" data-seek="1">${ticks}</div>${ovRows}
     <div class="trk" style="height:58px" data-seek="1" data-tk="main" data-drop="media">${vclips||'<span class="mut" style="position:absolute;left:10px;top:20px;font-size:12px">Nenhuma cena com imagens. Importe imagens para ver os clipes aqui.</span>'}</div>
     <div class="trk" style="height:${ah}px" data-seek="1" data-tk="audio" data-drop="media">${clips||'<span class="mut" style="position:absolute;left:10px;top:16px;font-size:12px">Nenhum áudio. Use “＋ Áudio” para subir música, narração ou efeitos.</span>'}</div>
     <div class="ph" id="ph" style="left:${U.ph*pps}px"></div></div></div></div>${insp}`;
-  const ns=$('.tlscroll',box);if(ns)ns.scrollLeft=sl;
+  const ns=$('.tlscroll',box),lab=$('.tllabels',box);
+  if(ns){ns.scrollLeft=sl;ns.scrollTop=slt;if(lab){lab.scrollTop=slt;ns.addEventListener('scroll',()=>{lab.scrollTop=ns.scrollTop})}}
   /* ondas sonoras */
   $$('canvas.wf',box).forEach(cv=>{const kk=P.audio.find(x=>x.id===cv.dataset.k),as=kk&&assets[kk.a];if(!as||!as.peaks)return;const w=cv.width=Math.max(6,Math.round((kk.out-kk.in)*pps)),h=cv.height=36,x=cv.getContext('2d');x.fillStyle='#a78bfa';const N=as.peaks.length;
     for(let i=0;i<w;i++){const idx2=Math.min(N-1,Math.floor((kk.in+i/pps)/as.dur*N)),v=Math.min(1,as.peaks[idx2]*kk.vol)*h/2;x.fillRect(i,h/2-v,1,Math.max(1,v*2))}});
@@ -856,21 +861,64 @@ function drawOverlayStrips(box,pps){
   });
 }
 function sbarHTML(){
-  return `<div class="sbar"><button class="btn" data-act="importHere">+ Importar imagens</button><button class="btn" data-act="replaceFrame">Trocar imagem</button><button class="btn" data-act="dupFrame">Duplicar</button><button class="btn" data-act="flipFrame">Espelhar</button><button class="btn bad" data-act="delFrame">Excluir</button><button class="btn" data-act="fitOpen" title="Iguala o tamanho do personagem entre imagens de tamanhos diferentes">⚖ Ajustar proporção</button><button class="btn" data-act="sliceFile" title="Separa uma imagem com vários personagens em frames">✂ Dividir folha de sprites</button></div>`;
+  return `<div class="sbar"><button class="btn pri" data-act="importHere" title="Imagens ou um .zip: são abertos em ordem numérica/alfabética">＋ Importar arquivo</button><button class="btn" data-act="replaceFrame">Trocar imagem</button><button class="btn" data-act="dupFrame">Duplicar</button><button class="btn" data-act="flipFrame">Espelhar</button><button class="btn bad" data-act="delFrame">Excluir</button><button class="btn" data-act="fitOpen" title="Iguala o tamanho do personagem entre imagens de tamanhos diferentes">⚖ Ajustar proporção</button><button class="btn" data-act="sliceFile" title="Separa uma imagem com vários personagens em frames">✂ Dividir folha de sprites</button></div>`;
+}
+function mediaOrder(){return [...(P.seqs||[]).filter(q=>q.frames.some(id=>assets[id])).map(q=>'seq:'+q.id),...(P.media||[]).filter(id=>assets[id])]}
+function mediaSelRefresh(){
+  $$('.mitem').forEach(el=>el.classList.toggle('sel',U.msel.has(el.dataset.dv)));
+  const n=U.msel.size,t=$('#msTxt');if(t)t.textContent=n?n+' selecionado(s). Arraste um deles para levar todos.':'';
+  const b=$('#msAll');if(b)b.textContent=(n&&n===mediaOrder().length)?'Limpar seleção':'Selecionar tudo';
 }
 function mediaBoxHTML(){
-  const seqs=(P.seqs||[]).filter(q=>q.frames.some(id=>assets[id])),ids=(P.media||[]).filter(id=>assets[id]);
-  const seqItems=seqs.map(q=>{const a=assets[q.frames[0]];
-    return `<div class="mitem seq" draggable="true" data-drag="media" data-dv="seq:${q.id}" title="${esc(q.name)} · ${q.frames.length} quadros · ${q.fps} FPS"><div class="mth bg-checker"><img src="${a?thumbOf(a):''}" draggable="false" alt=""><em>${q.frames.length} quadros</em></div><span class="mn">${esc(q.name)}</span><div class="mact"><button class="mi" data-act="mediaAdd" data-id="seq:${q.id}" data-m="scene" title="Adicionar todos os frames à cena atual">🎞</button><button class="mi" data-act="mediaAdd" data-id="seq:${q.id}" data-m="overlay" title="Colocar como animação sobreposta, na posição da agulha">◫</button><button class="mi" data-act="mediaRemove" data-id="seq:${q.id}" title="Remover da biblioteca">✕</button></div></div>`}).join('');
+  const seqs=(P.seqs||[]).filter(q=>q.frames.some(id=>assets[id])),ids=(P.media||[]).filter(id=>assets[id]),S=U.msel||new Set();
+  const seqItems=seqs.map(q=>{const a=assets[q.frames[0]],key='seq:'+q.id;
+    return `<div class="mitem seq ${S.has(key)?'sel':''}" draggable="true" data-act="mediaSel" data-id="${key}" data-drag="media" data-dv="${key}" title="${esc(q.name)} · ${q.frames.length} quadros · ${q.fps} FPS"><div class="mth bg-checker"><img src="${a?thumbOf(a):''}" draggable="false" alt=""><em>${q.frames.length} quadros</em></div><span class="mn">${esc(q.name)}</span><div class="mact"><button class="mi" data-act="mediaAdd" data-id="${key}" data-m="scene" title="Adicionar todos os frames à cena atual">🎞</button><button class="mi" data-act="mediaAdd" data-id="${key}" data-m="overlay" title="Colocar como animação sobreposta, na posição da agulha">◫</button><button class="mi" data-act="mediaRemove" data-id="${key}" title="Remover da biblioteca">✕</button></div></div>`}).join('');
   const items=ids.map(id=>{const a=assets[id],au=a.kind==='audio';
     const th=au?`<span class="ic-au">♪</span><em>${a.dur.toFixed(1)}s</em>`:`<img src="${thumbOf(a)}" draggable="false" alt="">`;
     const acts2=au?`<button class="mi" data-act="mediaAdd" data-id="${id}" data-m="audio" title="Adicionar o áudio na posição da agulha">＋</button>`
       :`<button class="mi" data-act="mediaAdd" data-id="${id}" data-m="scene" title="Adicionar à cena atual (como frame)">🎞</button><button class="mi" data-act="mediaAdd" data-id="${id}" data-m="overlay" title="Sobrepor no vídeo, na posição da agulha">◫</button><button class="mi" data-act="mediaSlice" data-id="${id}" title="Dividir folha de sprites em frames">✂</button>`;
-    return `<div class="mitem" draggable="true" data-drag="media" data-dv="${id}" title="${esc(a.name)}"><div class="mth ${au?'':'bg-checker'}">${th}</div><span class="mn">${esc(a.name)}</span><div class="mact">${acts2}<button class="mi" data-act="mediaRemove" data-id="${id}" title="Remover da biblioteca">✕</button></div></div>`}).join('');
-  const n=seqs.length+ids.length;
-  return `<div class="mbar"><button class="btn sm pri" data-act="mediaImport">＋ Importar mídia</button><span class="mut" style="font-size:12px">${n} item(ns) · imagens, .zip, sequências e áudio</span></div>
-   <div class="mgrid">${seqItems+items||'<div class="empty">Biblioteca vazia. Clique em “Importar mídia” ou arraste arquivos para cá. Um .zip ou várias imagens viram uma <b>sequência</b> (animação).</div>'}</div>
-   <div class="mut mhint" style="font-size:11.5px;padding:8px 2px 0">Arraste para a timeline: Vídeo 2+ sobrepõe, Vídeo 1 vira cena, Áudio vira som.</div>`;
+    return `<div class="mitem ${S.has(id)?'sel':''}" draggable="true" data-act="mediaSel" data-id="${id}" data-drag="media" data-dv="${id}" title="${esc(a.name)}"><div class="mth ${au?'':'bg-checker'}">${th}</div><span class="mn">${esc(a.name)}</span><div class="mact">${acts2}<button class="mi" data-act="mediaRemove" data-id="${id}" title="Remover da biblioteca">✕</button></div></div>`}).join('');
+  const n=seqs.length+ids.length,all=n&&S.size===n;
+  return `<div class="mbar"><button class="btn sm pri" data-act="mediaImport">＋ Importar mídia</button><button class="btn sm" id="msAll" data-act="mediaSelAll" ${n?'':'disabled'}>${all?'Limpar seleção':'Selecionar tudo'}</button><span class="mut" id="msTxt" style="font-size:12px">${S.size?S.size+' selecionado(s). Arraste um deles para levar todos.':''}</span></div>
+   <div class="mgrid">${seqItems+items||'<div class="empty">Biblioteca vazia. Clique em “Importar mídia” ou arraste arquivos para cá. Um .zip (ou várias imagens) é aberto, colocado em ordem e já entra no projeto como uma cena.</div>'}</div>
+   <div class="mut mhint" style="font-size:11.5px;padding:8px 2px 0">Clique para selecionar (Ctrl para vários) e arraste para a timeline. Os itens continuam aqui na biblioteca.</div>`;
+}
+/* cria (ou preenche a cena vazia atual com) uma cena a partir de uma lista de imagens, já em ordem */
+function sceneFromIds(name,ids,fps){
+  const cur=curScene();
+  if(!cur.frames.length){cur.frames=ids.map(newFrame);cur.fps=fps;U.sel=0;return}
+  const last=[...P.scenes].reverse().find(s=>s.frames.length)||cur,ns={...newScene(name,last.act,fps),target:Math.max(24,ids.length),frames:ids.map(newFrame)};
+  P.scenes.splice(P.scenes.indexOf(last)+1,0,ns);U.sceneId=ns.id;U.sel=0;
+}
+/* vários itens selecionados soltos de uma vez na timeline, um depois do outro */
+function dropMediaMulti(t,tt,tk){
+  const ids=mediaOrder().filter(x=>U.msel.has(x));if(!ids.length)return;
+  const isAud=x=>!x.startsWith('seq:')&&assets[x]&&assets[x].kind==='audio',audClip=(id,st)=>({id:uid(),a:id,start:+st.toFixed(2),in:0,out:assets[id].dur,vol:1,fi:0,fo:0,mute:false});
+  if(tk==='audio'){
+    const au=ids.filter(isAud);if(!au.length){toast('Só arquivos de áudio vão na faixa de áudio.');return}
+    mut(()=>{let st=tt;for(const id of au){P.audio.push(audClip(id,st));st+=assets[id].dur}});toast(au.length+' áudio(s) colocados em sequência.');return;
+  }
+  if(tk==='main'){
+    mut(()=>{
+      const segs=projectSegs(),ref=segs.find(g=>g.start+g.dur/2>tt),near=ref?ref.scene:(segs.length?segs[segs.length-1].scene:null);
+      let at=ref?P.scenes.indexOf(ref.scene):(near?P.scenes.indexOf(near)+1:P.scenes.length);
+      const mk=(name,fr,fps)=>({...newScene(name,near?near.act:'meio',fps),target:Math.max(24,fr.length),frames:fr.map(newFrame)}),imgs=ids.filter(x=>!x.startsWith('seq:')&&!isAud(x));
+      for(const id of ids)if(id.startsWith('seq:')){const q=findSeq(id.slice(4));if(q)P.scenes.splice(at++,0,mk(q.name,q.frames,q.fps||12))}
+      if(imgs.length)P.scenes.splice(at++,0,mk('Imagens',imgs,P.fps||12));
+    });
+    toast('Itens adicionados ao vídeo como cenas, na ordem da biblioteca.');return;
+  }
+  const tr=Math.max(2,+tk||2);
+  mut(()=>{
+    let st=tt;
+    for(const id of ids){
+      if(isAud(id)){P.audio.push(audClip(id,st));st+=assets[id].dur;continue}
+      if(id.startsWith('seq:')){const q=findSeq(id.slice(4));if(!q)continue;const fps=q.fps||12,d=+Math.max(.5,q.frames.length/fps).toFixed(2);P.overlays.push({id:uid(),seq:q.id,a:q.frames[0],track:tr,start:+st.toFixed(2),dur:d,x:0,y:0,s:100,op:100,flip:false,fps,off:0});st+=d}
+      else{P.overlays.push({id:uid(),a:id,track:tr,start:+st.toFixed(2),dur:2,x:0,y:0,s:50,op:100,flip:false});st+=2}
+    }
+    P.ovTracks=Math.max(P.ovTracks||1,tr-1);
+  });
+  toast(ids.length+' itens colocados em sequência na faixa Vídeo '+tr+'.');
 }
 function leftPanelHTML(s){
   const tab=U.leftTab||'media';let body;
@@ -885,24 +933,30 @@ async function mediaImportFiles(files){
   for(const f of files){
     try{
       if(/\.zip$/i.test(f.name)){
-        const imgs=[];let fps=null;
+        const imgs=[],imgFiles=[];let fps=null;
         for(const x of await unzip(f)){
           if(/\.txt$|\.md$/i.test(x.name)){const m=(await x.text()).match(/FPS sugerido:\s*(\d+)/i);if(m)fps=+m[1]}
-          else if(isImg(x))imgs.push(await ingest(x));
+          else if(isImg(x))imgFiles.push(x);
           else if(isAud(x))singles.push(await ingestAudio(x));
         }
+        imgFiles.sort((p,q)=>p.name.localeCompare(q.name,undefined,{numeric:true,sensitivity:'base'}));
+        for(const x of imgFiles)imgs.push(await ingest(x));
         if(imgs.length>1)seqs.push({ids:imgs,name:f.name.replace(/\.zip$/i,''),fps});else singles.push(...imgs);
       }
       else if(isImg(f))loose.push({id:await ingest(f),name:f.name});
       else if(isAud(f))singles.push(await ingestAudio(f));
     }catch(e){toast('Não foi possível ler '+f.name)}
   }
-  if(loose.length>1)seqs.push({ids:loose.map(x=>x.id),name:seqName(loose[0].name),fps:null});else if(loose.length===1)singles.push(loose[0].id);
+  let sheet=null;
+  if(loose.length>1)seqs.push({ids:loose.map(x=>x.id),name:seqName(loose[0].name),fps:null});
+  else if(loose.length===1){singles.push(loose[0].id);if(!seqs.length&&await looksLikeSheet(assets[loose[0].id]))sheet=loose[0].id}
   if(!seqs.length&&!singles.length){toast('Nenhum arquivo compatível (PNG, WebP, JPG, .zip, mp3, wav…).');return}
-  mut(()=>{seqs.forEach(s=>regSeq(s.ids,s.name,s.fps||P.fps));regMedia(singles)});
-  toast((seqs.length?seqs.length+' sequência(s) e ':'')+singles.length+' arquivo(s) na biblioteca de mídia.');
+  /* o zip é descompactado, ordenado (numérico/alfabético) e já entra no projeto como cena */
+  mut(()=>{seqs.forEach(s=>{regSeq(s.ids,s.name,s.fps||P.fps);sceneFromIds(s.name,s.ids,s.fps||P.fps)});regMedia(singles)});
+  toast(seqs.length?seqs.length+' sequência(s) abertas em ordem e adicionadas ao projeto'+(singles.length?' · +'+singles.length+' arquivo(s)':'')+'.':singles.length+' arquivo(s) na biblioteca de mídia.');
+  if(sheet)openSlicer(sheet,{fromImport:true});
 }
-function mediaDur(id){if(id.startsWith('seq:')){const q=findSeq(id.slice(4));return q?Math.max(.5,q.frames.length/(q.fps||12)):2}const a=assets[id];return a&&a.kind==='audio'?a.dur:3}
+function mediaDur(id){if(id==='multi')return [...U.msel].reduce((s,x)=>s+mediaDur(x),0)||2;if(id.startsWith('seq:')){const q=findSeq(id.slice(4));return q?Math.max(.5,q.frames.length/(q.fps||12)):2}const a=assets[id];return a&&a.kind==='audio'?a.dur:3}
 function mediaAddSeq(sid,m){
   const q=findSeq(sid);if(!q)return;
   if(m==='scene'){const s=curScene();mut(()=>{s.frames.push(...q.frames.map(newFrame));U.sel=s.frames.length-q.frames.length});toast(q.frames.length+' frames adicionados à cena “'+s.name+'”.')}
@@ -910,6 +964,7 @@ function mediaAddSeq(sid,m){
 }
 function dropMedia(id,t,e){
   const tl=$('.tlin'),tt=tl?Math.max(0,(e.clientX-tl.getBoundingClientRect().left)/U.pps):U.ph,tk=t.dataset.tk;
+  if(id==='multi'){dropMediaMulti(t,tt,tk);return}
   if(id.startsWith('seq:')){
     const sid=id.slice(4),q=findSeq(sid);if(!q)return;
     if(tk==='audio'){toast('Animações não vão na faixa de áudio. Solte em Vídeo 2 (ou acima) para sobrepor, ou em Vídeo 1 para virar uma cena.');return}
@@ -1468,7 +1523,7 @@ const acts={
     mut(()=>{const b={...k,id:uid(),start:U.ph,in:k.in+d};k.out=k.in+d;k.fo=0;b.fi=0;P.audio.push(b);U.clip=b.id})},
   delClip(){if(!P.audio.find(x=>x.id===U.clip)){toast('Selecione um clipe de áudio.');return}mut(()=>{P.audio=P.audio.filter(x=>x.id!==U.clip);U.clip=null})},settings:openSettings,closeModal,doExport,
   saveSettings(){mut(()=>{P.w=Math.max(16,+$('#sW').value||1080);P.h=Math.max(16,+$('#sH').value||1920);P.fps=+$('#sF').value||12;P.pixel=$('#sP').checked});closeModal()},
-  previewAll(){go('dash');setTimeout(()=>play('project',$('#pv')),60)},
+  previewAll(){go('frames');setTimeout(()=>{U.playAll=true;if(!PL.playing)acts.togglePlay()},80)},
   playProject(){if(PL.playing&&PL.kind==='project'){stop();return}const pv=$('#pv');fit(pv);play('project',pv)},
   playScenePrev(){const s=curScene();U.view='frames';render();play('scene',$('#stage'))},
   openScene(b){U.exp=b.dataset.id;U.sceneId=b.dataset.id;U.sel=0;render()},
@@ -1488,6 +1543,8 @@ const acts={
     else if(k==='zoom'){close();U.zoom=+v;U.view='frames';render()}
     else if(k==='bg'){close();U.bg=v;render()}
     else if(k==='guide'){U.guides[v]=!U.guides[v];refreshVM();if(U.view==='frames')renderOv();else{U.view='frames';render()}}
+    else if(k==='onion'){U.onion.on=!U.onion.on;refreshVM();if(U.view==='frames')paintStage()}
+    else if(k==='pixel'){P.pixel=!P.pixel;autosave();refreshVM();if(U.view==='frames'){paintStage();renderTL()}}
     else if(k==='media'){U.showMedia=!U.showMedia;refreshVM();U.view='frames';render()}
     else if(k==='strip'){U.showStrip=U.showStrip===false;refreshVM();U.view='frames';render()}
     else if(k==='props'){U.hideProps=!U.hideProps;refreshVM();U.view='frames';render()}
@@ -1578,13 +1635,12 @@ window.addEventListener('resize',()=>{const st=$('#stage');if(st)fit(st);const p
 function vmHTML(){
   const it=(on,label,act,k,v,kb)=>`<button class="vi" data-act="${act}" data-k="${k}" data-v="${v}"><i>${on?'✓':''}</i>${label}${kb?`<kbd>${kb}</kbd>`:''}</button>`;
   const g=U.guides||{};
-  return `<h5>Modo layout (editor de Frames)</h5>`+[['padrao','Padrão'],['organizar','Organizar'],['linha','Linha do tempo'],['curto','Vídeo curto'],['classico','Clássico']].map(([v,l])=>it(U.layout===v,l,'viewSet','layout',v)).join('')
-   +`<h5>Reprodução</h5>`+it(0,'Reproduzir / Pausar','viewSet','play','','Espaço')+it(0,'Parar','viewSet','stop','','')+it(0,'Tela cheia','viewSet','fs','','Alt+Enter')
+  return `<h5>Reprodução</h5>`+it(0,'Reproduzir / Pausar','viewSet','play','','Espaço')+it(0,'Parar','viewSet','stop','','')+it(0,'Tela cheia','viewSet','fs','','Alt+Enter')
    +`<h5>Qualidade de reprodução</h5>`+[[.33,'Rápida (33%)'],[.5,'Edição (50%)'],[1,'Completa (100%)']].map(([v,l])=>it(U.q===v,l,'viewSet','q',v)).join('')
    +`<h5>Nível de ampliação</h5>`+[[1,'Ajustar à tela'],[.5,'50%'],[.75,'75%'],[1.5,'150%'],[2,'200%']].map(([v,l])=>it((U.zoom||1)===v,l,'viewSet','zoom',v)).join('')
    +`<h5>Guias</h5>`+it(g.safe,'Zonas de segurança','viewSet','guide','safe')+it(g.grid,'Grade de terços','viewSet','guide','grid')+it(g.center,'Linhas centrais','viewSet','guide','center')
    +`<h5>Fundo da imagem</h5>`+[['checker','Xadrez (transparência)'],['white','Branco'],['black','Preto']].map(([v,l])=>it(U.bg===v,l,'viewSet','bg',v)).join('')
-   +`<h5>Painéis</h5>`+it(!U.hideProps,'Painel de propriedades','viewSet','props','')+it(U.showStrip!==false,'Faixa de frames','viewSet','strip','')+it(U.showMedia,'Biblioteca de mídia (fora do modo Vídeo curto)','viewSet','media','');
+   +`<h5>Exibição</h5>`+it(U.onion.on,'Onion skin (quadros vizinhos)','viewSet','onion','')+it(P.pixel,'Pixel art (ampliação nítida)','viewSet','pixel','');
 }
 function toggleVM(){
   const old=$('#vmenu');if(old){old.remove();return}
@@ -1612,7 +1668,7 @@ document.addEventListener('click',e=>{
 });
 /* arrastar e soltar */
 let DRAG=null;
-document.addEventListener('dragstart',e=>{const t=e.target.closest&&e.target.closest('[data-drag]');if(!t)return;DRAG={k:t.dataset.drag,v:t.dataset.dv};e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain','x');t.classList.add('dragging')});
+document.addEventListener('dragstart',e=>{const t=e.target.closest&&e.target.closest('[data-drag]');if(!t)return;DRAG={k:t.dataset.drag,v:t.dataset.dv};if(DRAG.k==='media'&&U.msel.has(DRAG.v)&&U.msel.size>1)DRAG.v='multi';e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain','x');t.classList.add('dragging')});
 document.addEventListener('dragend',()=>{DRAG=null;hideGhost();$$('.dragging,.over').forEach(x=>x.classList.remove('dragging','over'))});
 document.addEventListener('dragover',e=>{
   if(DRAG){const t=e.target.closest('[data-drop]');if(t&&t.dataset.drop===DRAG.k){e.preventDefault();$$('.over').forEach(x=>x.classList.remove('over'));t.classList.add('over');if(DRAG.k==='media')showGhost(t,e)}}
@@ -1622,7 +1678,7 @@ document.addEventListener('drop',e=>{
     if(d.k==='frame'){const ps=v=>String(v).includes(':')?String(v).split(':'):[curScene().id,v],[fs,fi]=ps(d.v),[ts,ti]=ps(t.dataset.dv);
       const A=P.scenes.find(x=>x.id===fs),B=P.scenes.find(x=>x.id===ts);
       if(A&&B){const from=+fi;let to=ti==='end'?B.frames.length:+ti;if(!(A===B&&from===to))mut(()=>{const [x]=A.frames.splice(from,1);if(A===B&&ti==='end')to=B.frames.length;B.frames.splice(to,0,x);U.sceneId=B.id;U.sel=to})}}
-    else if(d.k==='media'){dropMedia(d.v,t,e)}
+    else if(d.k==='media'){const ex={clientX:e.clientX};setTimeout(()=>dropMedia(d.v,t,ex),0)}
     else{mut(()=>{const i=P.scenes.findIndex(x=>x.id===d.v),[sc]=P.scenes.splice(i,1);
       if(t.dataset.dv){const j=P.scenes.findIndex(x=>x.id===t.dataset.dv);sc.act=P.scenes[j].act;P.scenes.splice(j,0,sc)}else{sc.act=t.dataset.dact;P.scenes.push(sc)}
       const o=k=>ACTS.findIndex(a=>a[0]===k);P.scenes=P.scenes.map((x,k)=>[x,k]).sort((a,b)=>o(a[0].act)-o(b[0].act)||a[1]-b[1]).map(x=>x[0])})}
@@ -1635,6 +1691,8 @@ Object.assign(acts,{
   sliceApply(){sliceApply()},sliceSingle(){sliceSingle()},
   async sliceFile(){const [f]=await pick(false,'image/png,image/webp,image/jpeg');if(!f)return;try{const id=await ingest(f);openSlicer(id,{fromImport:true})}catch(e){toast('Não foi possível ler a imagem.')}},
   mediaSlice(b){openSlicer(b.dataset.id)},
+  mediaSel(b,e){const id=b.dataset.id;if(e.ctrlKey||e.shiftKey||e.metaKey){if(U.msel.has(id))U.msel.delete(id);else U.msel.add(id)}else U.msel=new Set([id]);mediaSelRefresh()},
+  mediaSelAll(){const all=mediaOrder();U.msel=(U.msel.size&&U.msel.size===all.length)?new Set():new Set(all);mediaSelRefresh()},
   ovAddTrack(){mut(()=>{P.ovTracks=Math.min(6,(P.ovTracks||1)+1)})},
   ovRmTrack(){mut(()=>{P.ovTracks=Math.max(1,(P.ovTracks||1)-1)})},
   ovDel(){delOverlay()},
