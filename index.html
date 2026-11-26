@@ -217,6 +217,10 @@ body.dragging-tl,body.dragging-tl *{user-select:none!important;-webkit-user-sele
 .tlscroll::-webkit-scrollbar-thumb{background:#3b2f66;border-radius:8px;border:2px solid #0c0a14}
 .tlscroll::-webkit-scrollbar-thumb:hover{background:var(--ac)}
 .tlscroll::-webkit-scrollbar-corner{background:#0c0a14}
+#ovbox{position:fixed;display:none;border:2px solid var(--ac);box-sizing:border-box;cursor:move;z-index:40;touch-action:none;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
+#ovbox i{position:absolute;width:12px;height:12px;background:#fff;border:2px solid var(--ac);border-radius:3px;box-sizing:border-box}
+#ovbox i[data-c=nw]{left:-7px;top:-7px;cursor:nwse-resize}#ovbox i[data-c=ne]{right:-7px;top:-7px;cursor:nesw-resize}
+#ovbox i[data-c=sw]{left:-7px;bottom:-7px;cursor:nesw-resize}#ovbox i[data-c=se]{right:-7px;bottom:-7px;cursor:nwse-resize}
 .tlsplit{height:9px;margin:-4px 0 4px;cursor:ns-resize;border-radius:5px;position:relative}
 .tlsplit::after{content:"";position:absolute;left:50%;top:3px;width:46px;height:3px;border-radius:3px;background:#3b2f66;transform:translateX(-50%)}
 .tlsplit:hover::after{background:var(--ac)}
@@ -470,6 +474,56 @@ function paint(canvas,frame,o={}){
   ctx.setTransform(q,0,0,q,0,0);
   if(frame)drawFrame(ctx,frame,q,null,1);
   if(o.t!=null&&P.overlays&&P.overlays.length)drawOverlays(ctx,q,o.t);
+  if(canvas.id==='stage'||canvas.id==='pv')ovBoxUpdate();
+}
+/* caixa de seleção sobre o visualizador: arraste para mover, puxe os cantos para aumentar/diminuir */
+let OB=null,OBd=null;
+function ovCanvas(){return U.view==='frames'?$('#stage'):$('#pv')}
+function ovGeom(o){
+  const cv=ovCanvas();if(!cv||!cv.offsetParent)return null;const aid=ovFrameAsset(o,U.ph),a=aid&&assets[aid];if(!a)return null;
+  const r=cv.getBoundingClientRect(),k=r.width/P.w,sc=Math.min(P.w/a.w,P.h/a.h)*o.s/100,w=a.w*sc*k,h=a.h*sc*k;
+  return {r,k,w,h,cx:r.left+r.width/2+o.x*k,cy:r.top+r.height/2+o.y*k};
+}
+function ovBoxUpdate(){
+  if(!OB){OB=document.createElement('div');OB.id='ovbox';OB.innerHTML='<i data-c="nw"></i><i data-c="ne"></i><i data-c="sw"></i><i data-c="se"></i>';document.body.appendChild(OB);OB.addEventListener('pointerdown',e=>ovDragStart(e,e.target.dataset.c?'size':'move'))}
+  const o=(P.overlays||[]).find(x=>x.id===U.ov),g=o&&!PL.playing&&U.ph>=o.start&&U.ph<o.start+o.dur?ovGeom(o):null;
+  if(!g){OB.style.display='none';return}
+  OB.style.display='block';OB.style.left=(g.cx-g.w/2)+'px';OB.style.top=(g.cy-g.h/2)+'px';OB.style.width=g.w+'px';OB.style.height=g.h+'px';
+}
+function ovDragStart(e,mode){
+  const o=P.overlays.find(x=>x.id===U.ov),g=o&&ovGeom(o);if(!g)return;e.preventDefault();e.stopPropagation();pushHist();
+  OBd={o,mode,k:g.k,x0:e.clientX,y0:e.clientY,ox:o.x,oy:o.y,s0:o.s,cx:g.cx,cy:g.cy,d0:Math.max(8,Math.hypot(e.clientX-g.cx,e.clientY-g.cy))};
+}
+window.addEventListener('pointermove',e=>{
+  if(!OBd)return;const d=OBd,o=d.o;
+  if(d.mode==='move'){o.x=Math.round(d.ox+(e.clientX-d.x0)/d.k);o.y=Math.round(d.oy+(e.clientY-d.y0)/d.k)}
+  else o.s=Math.max(5,Math.min(800,Math.round(d.s0*Math.hypot(e.clientX-d.cx,e.clientY-d.cy)/d.d0)));
+  if(U.view==='frames')paintStage();else paintProjectAt(U.ph);
+});
+window.addEventListener('pointerup',()=>{if(!OBd)return;OBd=null;changed();renderTL()});
+window.addEventListener('resize',()=>ovBoxUpdate());
+/* clicar numa imagem sobreposta dentro do visualizador seleciona e já permite arrastar */
+document.addEventListener('pointerdown',e=>{
+  const cv=e.target;if(!cv||(cv.id!=='stage'&&cv.id!=='pv')||PL.playing||!P.overlays)return;
+  const list=P.overlays.filter(o=>U.ph>=o.start&&U.ph<o.start+o.dur).sort((a,b)=>b.track-a.track);
+  for(const o of list){const g=ovGeom(o);if(g&&Math.abs(e.clientX-g.cx)<=g.w/2&&Math.abs(e.clientY-g.cy)<=g.h/2){U.ov=o.id;U.clip=null;renderTL();ovBoxUpdate();ovDragStart(e,'move');return}}
+});
+/* ordem das camadas: à frente = faixa acima de tudo o que se sobrepõe; atrás = abaixo de tudo */
+function ovOrder(dir){
+  const o=P.overlays.find(x=>x.id===U.ov);if(!o)return;
+  const ot=P.overlays.filter(x=>x!==o&&x.start<o.start+o.dur&&x.start+x.dur>o.start);
+  if(!ot.length){toast('Não há outra mídia no mesmo momento para trocar a ordem.');return}
+  if(dir>0){
+    const m=Math.max(...ot.map(x=>x.track));if(o.track>m){toast('Já está na frente.');return}
+    if(m+1>9){toast('Limite de faixas atingido.');return}
+    mut(()=>{o.track=m+1;P.ovTracks=Math.max(P.ovTracks||1,o.track-1)});toast('Colocado à frente (Vídeo '+o.track+').');
+  }else{
+    const m=Math.min(...ot.map(x=>x.track));if(o.track<m){toast('Já está atrás.');return}
+    if(m-1>=2){mut(()=>{o.track=m-1})}
+    else{if(Math.max(...P.overlays.map(x=>x.track))+1>9){toast('Limite de faixas atingido.');return}
+      mut(()=>{P.overlays.forEach(x=>{if(x!==o)x.track++});o.track=2;P.ovTracks=Math.min(8,Math.max(P.ovTracks||1,...P.overlays.map(x=>x.track-1)))})}
+    toast('Enviado para trás (Vídeo '+o.track+').');
+  }
 }
 function fit(canvas){
   const isStage=canvas.id==='stage',el=isStage?canvas.parentElement:canvas,box=el&&el.parentElement;if(!box)return;
@@ -800,6 +854,7 @@ function renderTL(){
       const bb=bboxCached(as),pw=bb.w*.08,ph2=bb.h*.08,sx=Math.max(0,bb.x-pw),sy=Math.max(0,bb.y-ph2),sw=Math.min(as.w-sx,bb.w+pw*2),sh=Math.min(as.h-sy,bb.h+ph2*2),r=Math.min((tw-4)/sw,(h-4)/sh),dw=sw*r,dh=sh*r;
       x.drawImage(as.img,sx,sy,sw,sh,k2*tw+(tw-dw)/2,(h-dh)/2,dw,dh)}});
   drawOverlayStrips(box,pps);
+  ovBoxUpdate();
 }
 /* ----- biblioteca de mídia e sobreposições (faixas de vídeo extras) ----- */
 function regMedia(ids){if(!P.media)P.media=[];ids.forEach(id=>{if(id&&!P.media.includes(id))P.media.push(id)})}
@@ -886,7 +941,8 @@ function ovInspHTML(o){
    <label>Duração <input type="number" step=".1" min=".1" value="${o.dur}" data-bind="ovdur"> s</label>
    ${q?`<label>FPS <input type="number" min="1" max="60" value="${o.fps||q.fps||12}" data-bind="ovfps"></label>`:''}
    <label>X <input type="number" value="${o.x}" data-bind="ovx"></label><label>Y <input type="number" value="${o.y}" data-bind="ovy"></label>
-   <label>Escala <input type="number" min="5" max="800" value="${o.s}" data-bind="ovs"> %</label>
+   <label>Tamanho <button class="btn sm" data-act="ovScale" data-d="-10" title="Diminuir">−</button><input type="number" min="5" max="800" value="${o.s}" data-bind="ovs" style="width:60px"> % <button class="btn sm" data-act="ovScale" data-d="10" title="Aumentar">＋</button></label>
+   <span class="mut" style="display:inline-flex;gap:6px"><button class="btn sm" data-act="ovFront" title="Colocar à frente das outras mídias">⬆ Trazer à frente</button><button class="btn sm" data-act="ovBack" title="Colocar atrás das outras mídias">⬇ Enviar para trás</button></span>
    <label>Opacidade <input type="range" min="0" max="100" value="${o.op}" data-bind="ovop"> <span id="ovopl">${o.op}%</span></label>
    <label>Faixa <select data-bind="ovtrack" style="background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:3px 6px">${tr.join('')}</select></label>
    <label class="chk"><input type="checkbox" data-bind="ovflip" ${o.flip?'checked':''}> Espelhar</label>
@@ -1755,6 +1811,8 @@ Object.assign(acts,{
   ovAddTrack(){mut(()=>{P.ovTracks=Math.min(6,(P.ovTracks||1)+1)})},
   ovRmTrack(){mut(()=>{P.ovTracks=Math.max(1,(P.ovTracks||1)-1)})},
   ovDel(){delOverlay()},
+  ovFront(){ovOrder(1)},ovBack(){ovOrder(-1)},
+  ovScale(b){const o=P.overlays.find(x=>x.id===U.ov);if(!o)return;mut(()=>{o.s=Math.max(5,Math.min(800,Math.round(o.s+(+b.dataset.d)*Math.max(1,o.s/50))))})},
   leftTab(b){U.leftTab=b.dataset.t;render()},
   mediaImport(){pick(true,'image/png,image/webp,image/jpeg,.zip,application/zip,audio/*,.mp3,.wav,.m4a,.ogg,.aac,.flac').then(f=>f.length&&mediaImportFiles(f))},
   mediaRemove(b){const id=b.dataset.id;mut(()=>{if(id.startsWith('seq:')){const sid=id.slice(4);P.seqs=(P.seqs||[]).filter(q=>q.id!==sid);P.overlays=P.overlays.filter(o=>o.seq!==sid)}else P.media=(P.media||[]).filter(x=>x!==id)})},
